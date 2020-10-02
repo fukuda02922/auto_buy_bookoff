@@ -11,6 +11,7 @@ import sys
 
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
+PROCESS_TIME = 60 * 20
 # chromeのアドレスバーに「chrome://version/」を入力して、そのプロフィールパス
 # USER_DATA_DIR = 'UserData'
 # USER_DATA_DIR = '/Users/y.fukuda/Library/Application Support/Google/Chrome/Default/Default'
@@ -66,7 +67,7 @@ def star_list(start_time):
                     if message == '選択した商品をカートに入れました\n画面右上の「カートをみる」でカートの中身が確認できます':
                         print('カートに追加')
                         return
-        if (time.time() - start_time) > 60 * 20:
+        if (time.time() - start_time) > PROCESS_TIME:
             sys.exit(0)
         print('秒後に再表示')
         time.sleep(2)
@@ -137,8 +138,8 @@ login(USER_MAIL, USER_PASS)
 start_time = time.time()
 while True:
     # お気に入りに登録している商品で中古の在庫があればカートに保存
-    # star_list(start_time)
+    star_list(start_time)
     # 購入処理
     buy()
-    if (time.time() - start_time) > 60 * 20:
+    if (time.time() - start_time) > PROCESS_TIME:
         sys.exit(0)
