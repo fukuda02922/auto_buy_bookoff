@@ -19,11 +19,14 @@ PROCESS_TIME = 60 * 20
 options = webdriver.chrome.options.Options()
 # options.add_argument('--user-data-dir={}'.format(USER_DATA_DIR))
 # options.add_argument('--headless')
-options.add_argument('--single-process')
+# options.add_argument('--user-agent=hogehoge')
+# options.add_argument('--no-sandbox')
+# options.add_argument('--disable-dev-shm-usage')
+# options.add_argument('--single-process')
 options.add_argument('--disable-application-cache')
 options.add_argument('--ignore-certificate-errors')
 options.add_argument('--start-maximized')
-driver = webdriver.Chrome(options=options)
+driver = webdriver.Chrome('C:\Workspace\driver\chromedriver_win32\chromedriver.exe', options=options)
 
 def login(id, password):
     driver.get('https://www.bookoffonline.co.jp/common/CSfLogin.jsp')

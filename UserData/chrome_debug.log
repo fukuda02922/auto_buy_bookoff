@@ -1,4 +1,0 @@
-[3933:775:0927/112900.610151:INFO:CONSOLE(0)] "[DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o", source: https://www.bookoffonline.co.jp/common/CSfLogin.jsp (0)
-[3933:775:0927/112903.900281:INFO:CONSOLE(301)] "login_btn_click_pc", source: https://www.bookoffonline.co.jp/files/inc_js/ac/clicktag.js (301)
-[3933:775:0927/112905.834763:INFO:CONSOLE(0)] "[DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o", source: https://www.bookoffonline.co.jp/common/CSfLogin.jsp (0)
-[3933:775:0927/112916.251986:WARNING:pref_notifier_impl.cc(40)] Pref observer for media_router.cast_allow_all_ips found at shutdown.
