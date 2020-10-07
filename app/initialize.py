@@ -43,13 +43,16 @@ def login(id, password):
 
 def cart_setting():
     driver.switch_to.window(driver.window_handles[NEW])
+    driver.implicitly_wait(10)
     # カートにセッティング
     elements = driver.find_elements_by_xpath('//td[@class=\"table_goods_arrival_title\"]/a')
     for elm in elements:
         elm.click()
-        driver.get(MAIN_URL + link)
-        if driver.find_elements_by_xpath('//img[@alt=\"店舗受取サービス 対応商品\"]'):
+        driver.switch_to.window(driver.window_handles[-1])
+        if driver.find_elements_by_class_name('shop-receive-support-img'):
             driver.find_element_by_xpath('//img[@alt=\"中古をカートに入れる\"]/..').click()
+            driver.close()
+            driver.implicitly_wait(0)
             return
         driver.switch_to.window(driver.window_handles[NEW])
 
@@ -60,6 +63,7 @@ def cart_refresh():
         elements = driver.find_elements_by_xpath('//input[@src=\"../images/parts/pgs/b_delete110203.gif?20180803\"]')
         if elements:
             elements[0].click()
+            return
 
 def star_list(start_time):
     while True:
@@ -96,48 +100,48 @@ def star_list(start_time):
                         return
         if (time.time() - start_time) > PROCESS_TIME:
             sys.exit(0)
-        print('秒後に再表示')
+        print('2秒後に再表示')
         time.sleep(2)
 
-def buy(init_process):
-    driver.implicitly_wait(10)
+def buy(init_process: bool, buy_confirm: bool):
     print('購入開始')
     # 別ウィンドウでカートを開く
     driver.switch_to.window(driver.window_handles[CART])
-    driver.refresh()
+    driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
     errors = driver.find_elements_by_xpath('//div[@class=\"error\"]/../../../td[@class=\"check\"]/input[@type=\"checkbox\"]')
     if errors:
         for error in errors:
             error.click()
         driver.find_element_by_name('deleteSelectedButton').click()
-    try_count = 0
+    driver.implicitly_wait(10)
 
     # ブックオフ店舗で受け取りボタンを押下
     try:
         driver.find_element_by_xpath('//input[@alt=\"ブックオフ店舗で受け取る\"]').click()
-        break
     except Exception:
         traceback.print_exc()
         print('購入失敗')
         driver.implicitly_wait(0)
         return
+
     # 店舗選択を確定
-    try:
-        if driver.find_elements_by_xpath('//span[contains(text(), "{0}")]'.format('店舗受取できない商品を')):
-            driver.find_elements_by_xpath('//span[contains(text(), "{0}")]'.format('店舗受取できない商品を'))[0].parent().click()
+    if init_process:
+        try:
+            driver.find_element_by_xpath('//div[@class="shop-receive-btn js_receive_btn_select"]/span[contains(text(), "{0}")]'.format("選択した店舗で支払・受取をする")).click()
+        except Exception:
+            print('購入失敗')
+            traceback.print_exc()
+            driver.implicitly_wait(0)
+            if driver.find_elements_by_xpath('//span[contains(text(), "{0}")]'.format('店舗受取できない商品を')):
+                driver.find_elements_by_xpath('//span[contains(text(), "{0}")]'.format('店舗受取できない商品を'))[0].parent().click()
             return
-        driver.find_element_by_xpath('//div[@class="shop-receive-btn js_receive_btn_select"]/span[contains(text(), "{0}")]'.format("選択した店舗で支払・受取をする")).click()
-        break
-    except Exception:
-        traceback.print_exc()
-        print('購入失敗')
-        driver.implicitly_wait(0)
-        return
+
     # 注文確定ボタンを押下
-    if (not init_process):
+    if (buy_confirm):
+        driver.switch_to.window(driver.window_handles[BUY])
+        driver.get(MAIN_URL + '/order/COdOrderConfirmRcptStore.jsp')
         try:
             driver.find_element_by_id('tempToReal').click()
-            break
         except Exception:
             traceback.print_exc()
             print('購入失敗')
@@ -155,15 +159,15 @@ def buy(init_process):
     driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
 
 def init():
-    driver.execute_script('window.open()')
-    driver.execute_script('window.open()')
-    driver.execute_script('window.open()')
     driver.switch_to.window(driver.window_handles[STAR_LIST])
     driver.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&ml=0&ct=00&sk=10&row=50')
+    driver.execute_script('window.open()')
     driver.switch_to.window(driver.window_handles[CART])
     driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
+    driver.execute_script('window.open()')
     driver.switch_to.window(driver.window_handles[BUY])
     driver.get(MAIN_URL + '/order/COdOrderConfirmRcptStore.jsp')
+    driver.execute_script('window.open()')
     driver.switch_to.window(driver.window_handles[NEW])
     driver.get(MAIN_URL + '/files/special/list_arrival.html')
 
@@ -173,14 +177,16 @@ init()
 # 注文完了画面を表示させるためにカートと店舗を設定
 print('カートの設定処理開始')
 cart_setting()
-buy(True)
+buy(True, False)
 cart_refresh()
+driver.switch_to.window(driver.window_handles[BUY])
+driver.refresh()
 print('カートの設定処理完了')
 start_time = time.time()
 while True:
     # お気に入りに登録している商品で中古の在庫があればカートに保存
     star_list(start_time)
     # 購入処理
-    buy(False)
+    buy(False, True)
     if (time.time() - start_time) > PROCESS_TIME:
         sys.exit(0)
