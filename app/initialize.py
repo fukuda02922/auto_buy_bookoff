@@ -10,8 +10,8 @@ import time
 import sys
 import traceback
 
-USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
-USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
+USER_MAIL = '' #ログイン時に入力するメールアドレス
+USER_PASS = ''  #ログイン時に入力するパスワード
 PROCESS_TIME = 60 * 30
 # chromeのアドレスバーに「chrome://version/」を入力して、そのプロフィールパス
 # USER_DATA_DIR = 'UserData'
