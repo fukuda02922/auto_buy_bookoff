@@ -67,10 +67,9 @@ class CartWebpageModel(AbstractWebpageModel):
     def getUrl(self):
         return self.DOMAIN + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&ml=0&ct=00&sk=10&row=50'
     
-class BuyWebpageModel(AbstractWebpageModel):
-    def getUrl(self):
-        return self.DOMAIN + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&ml=0&ct=00&sk=10&row=50'
-    
+    def cart_refresh():
+        
+
 class NewWebpageModel(AbstractWebpageModel):
     def getUrl(self):
         return self.DOMAIN + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&ml=0&ct=00&sk=10&row=50'
