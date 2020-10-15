@@ -5,32 +5,26 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support import expected_conditions
 from selenium.common.exceptions import TimeoutException
 
+
+
 import chromedriver_binary
 import time
-from datetime import datetime
 import sys
 import traceback
 import requests
 from threading import Thread, Event
-from logging import getLogger, StreamHandler, DEBUG, FileHandler, Formatter, INFO
-import logging
-
-now = datetime.now()
+from logging import getLogger, StreamHandler, DEBUG, FileHandler, Formatter
 
 # ログの設定
-logging.basicConfig(
-    filename='test{}_{}_{}.log'.format(now.year, now.month, now.day),
-    level=INFO,
-    format='%(levelname)s:%(message)s'
-)
 logger = getLogger(__name__)
-formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler = StreamHandler()
-handler.setFormatter(formatter)
+handler.setLevel(DEBUG)
+logger.setLevel(DEBUG)
 logger.addHandler(handler)
 logger.propagate = False
-file_handler = FileHandler(filename='test{}_{}_{}.log'.format(now.year, now.month, now.day))
-file_handler.setFormatter(formatter)
+file_handler = FileHandler('log/{}.log'.format())
+formatter = Formatter('%(asctime)s:%(lineno)d:%(levelname)s:%(message)s')
+file_handler.format(formatter)
 logger.addHandler(file_handler)
 
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
@@ -48,10 +42,9 @@ options.add_argument('--headless')
 options.add_argument('--disable-application-cache')
 options.add_argument('--ignore-certificate-errors')
 options.add_argument('--start-maximized')
-options.add_argument("--log-level=3")
 driver = webdriver.Chrome(options=options)
 driver_star = webdriver.Chrome(options=options)
-# driver_star2 = webdriver.Chrome(options=options)
+driver_star2 = webdriver.Chrome(options=options)
 
 STAR_LIST = 0
 CART = 0
@@ -63,23 +56,21 @@ new_count = 0
 buy_count = 0
 start_time = time.time()
 cart_put_list = []
+buy_processing = False
 
-def login(id, password):
+def login(id, password, select_driver):
     while True:
         try:
-            driver.get(MAIN_URL + '/common/CSfLogin.jsp')
-            elmId = driver.find_element_by_name('ID')
+            select_driver.get(MAIN_URL + '/common/CSfLogin.jsp')
+            elmId = select_driver.find_element_by_name('ID')
             elmId.send_keys(id)
-            elmPass = driver.find_element_by_name('PWD')
+            elmPass = select_driver.find_element_by_name('PWD')
             elmPass.send_keys(password)
-            loginBtn = driver.find_element_by_xpath('//input[@alt=\"ログイン\"]')
+            loginBtn = select_driver.find_element_by_xpath('//input[@alt=\"ログイン\"]')
             loginBtn.click()
-            for cookie in driver.get_cookies():
-                driver_star.add_cookie(cookie)
-                session.cookies.set(cookie["name"], cookie["value"])
             return
-        except TimeoutException as e:
-            logger.exception(f'{e}')
+        except TimeoutException:
+            traceback.print_exc()
             continue
 
 def cart_setting():
@@ -108,8 +99,8 @@ def cart_refresh():
                 elements[0].click()
             else:
                 return
-        except Exception as e:
-            logger.exception(f'{e}')
+        except Exception:
+            traceback.print_exc()
             continue
 
 def shop_select():
@@ -130,28 +121,33 @@ def finish():
     global buy_count
     buy_count += 1
 
-def star_list(start_time):
+def star_list(start_time, select_driver, index):
     while True:
-        logger.info('検索開始')
+        print('検索開始{}'.format(index))
         # 中古在庫を50件表示で検索
-        driver_star.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
+        select_driver.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
         # 検索結果のリスト
-        elements = driver_star.find_elements_by_xpath('//td[@class=\"buy\"]/..')
+        elements = select_driver.find_elements_by_xpath('//td[@class=\"buy\"]/..')
         # 検索結果が存在するか確認
         if elements:
             # 検索結果をループ
             for elm in elements:
                 # カートに追加されていないか確認し、追加されていない場合に追加して終了
                 if not elm.find_elements_by_class_name('incart'):
-                    global new_count
-                    new_count += 1
-                    logger.info('在庫あり')
                     link = elm.find_element_by_xpath('td[@class=\"buy\"]/dl/dd/a').get_attribute('href')
-                    try:
-                        session.get(link)
-                    except Exception as e:
-                        logger.exception(f'{e}')
-                    eventCart.set()
+                    if not (link in cart_put_list):
+                        global new_count
+                        new_count += 1
+                        print('中古在庫あり')
+                        cart_put_list.append(link)
+                        try:
+                            session.get(link)
+                        except Exception:
+                            traceback.print_exc()
+                        while True:
+                            if not buy_processing:
+                                eventCart.set()
+                                break
         if (time.time() - start_time) > PROCESS_TIME:
             eventCart.set()
             return
@@ -163,8 +159,8 @@ def buy(init_process: bool, buy_confirm: bool):
         try:
             driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
             break
-        except TimeoutException as e:
-            logger.exception(f'{e}')
+        except TimeoutException:
+            traceback.print_exc()
     while True:
         if buy_confirm:
             if (time.time() - start_time) > PROCESS_TIME:
@@ -173,7 +169,9 @@ def buy(init_process: bool, buy_confirm: bool):
             eventCart.clear()
             driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
         if not driver.find_elements_by_id('cartempty'):
-            logger.info('購入開始')
+            buy_processing = True
+            print('購入開始')
+            # 別ウィンドウでカートを開く
             errors = driver.find_elements_by_xpath('//div[@class=\"error\"]/../../../td[@class=\"check\"]/input[@type=\"checkbox\"]')
             if errors:
                 for error in errors:
@@ -188,13 +186,14 @@ def buy(init_process: bool, buy_confirm: bool):
                 if buy_confirm:
                     driver.find_element_by_id('account')
                     finish()
-                logger.info('購入完了')
-            except Exception as e:
-                logger.exception(f'{e}')
-                logger.info('購入失敗')
+                    print('購入完了')
+            except Exception:
+                traceback.print_exc()
+                print('購入失敗')
             driver.implicitly_wait(0)
+            buy_processing = False
             if init_process:
-                logger.info('セット完了')
+                print('セット完了')
                 return
 
 def init():
@@ -211,52 +210,41 @@ def init():
                 driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
                 success_count += 1
             driver_star.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
+            driver_star2.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
             return
-        except TimeoutException as e:
-            logger.exception(f'{e}')
-        except Exception as e:
-            logger.error(f'{e}')
+        except TimeoutException:
+            traceback.print_exc()
+    return
+
+
 
 driver.execute_script('window.open()')
 # ログイン
-logger.info('初期表示')
+print('初期表示')
 init()
-logger.info('ログイン処理')
-login(USER_MAIL, USER_PASS)
+print('ログイン処理')
+login(USER_MAIL, USER_PASS, driver)
+for cookie in driver.get_cookies():
+    driver_star.add_cookie(cookie)
+    session.cookies.set(cookie["name"], cookie["value"])
+login(USER_MAIL, USER_PASS, driver_star2)
 # 注文完了画面を表示させるためにカートと店舗を設定
-logger.info('カートの設定処理開始')
+print('カートの設定処理開始')
 cart_setting()
 buy(True, False)
 shop_select()
 cart_refresh()
-logger.info('カートの設定処理完了')
+print('カートの設定処理完了')
 
-star_list_th = Thread(target=star_list, args=(start_time,))
 buy_th = Thread(target=buy, args=(False, True))
+star_list_th = Thread(target=star_list, args=(start_time, driver_star, 1))
+star_list_th2 = Thread(target=star_list, args=(start_time, driver_star2, 2))
 # お気に入りに登録している商品で中古の在庫があればカートに保存
-star_list_th.start()
 buy_th.start()
-star_list_th.join()
+star_list_th.start()
+time.sleep(1)
+star_list_th2.start()
 buy_th.join()
-logger.info('new: {}, buy: {}'.format(new_count, buy_count))
-
-###
-# https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp
-# orderMode: 5
-# CART1_001: 20201015142336509489
-# CART1_002: 1
-# CART1_VALID_GOODS: 
-# CART1_GOODS_NM: (unable to decode value)
-# CART1_STOCK_TP: 1
-# CART1_SALE_PR: 364
-# CART1_CART_PR: 364
-# CART1_005: 1
-# LENGTH: 1
-# OPCODE: edit_and_go
-# SELECT_CARTNO: 
-# SELECT_CARTSEQ: 
-# SELECT_ISCD: 
-# SELECT_ST: 
-# ANCHOR: 
-# ORDER_MODE: 
-###
+star_list_th.join()
+star_list_th2.join()
+print('new: {}, buy: {}'.format(new_count, buy_count))

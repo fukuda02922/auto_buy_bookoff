@@ -10,6 +10,7 @@ import chromedriver_binary
 import time
 import sys
 import traceback
+import requests
 from enum import Enum
 
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
@@ -20,18 +21,35 @@ class MODELS(Enum):
     LOGIN = 0
     STAR_LIST = 1
     CART = 2
-    BUY = 3
-    NEW = 4
+    NEW = 3
 
 class AbstractWebpageModel(metaClass=ABCMeta):
-
     _DOMAIN = 'https://www.bookoffonline.co.jp'
     _driver = None
     _page = 0
+    _session= None
 
-    def __init__(self, driver, page):
+    def __init__(self, driver, page, session):
         self._driver = driver
         self._page = page
+        self._session = session
+    
+    def shop_select():
+        _session.post('https://www.bookoffonline.co.jp/disp/COdRcptStore.jsp', data={
+            'submitStoreCd': '10434'
+        })
+
+    def finish():
+        _session.post('https://www.bookoffonline.co.jp/order/COdOrderConfirmRcptStore.jsp', data={
+            'BTN_CHECK': 'TempToReal',
+            'ORD_UPD_INFO': '',
+            'TEXT_CPN_ID': '',
+            'deleteBookmarkAndAlertMail': '1',
+            'omi': '62690436',
+            'x': '123',
+            'y': '21'
+        })
+
 
     @abstractmethod
     def getInstance(self, driver: Chrome, model: MODELS):
@@ -55,7 +73,6 @@ class AbstractWebpageModel(metaClass=ABCMeta):
         self._driver.get(self.getUrl())
 
 class LoginWebpageModel(AbstractWebpageModel):
-
     def getUrl(self):
         return self.DOMAIN + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&ml=0&ct=00&sk=10&row=50'
 
