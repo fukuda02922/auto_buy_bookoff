@@ -35,7 +35,7 @@ logger.addHandler(file_handler)
 
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
-PROCESS_TIME = 60 * 60 * 3
+PROCESS_TIME = 60 * 60 * 2
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 
 # chromeのアドレスバーに「chrome://version/」を入力して、そのプロフィールパス
@@ -63,6 +63,7 @@ new_count = 0
 buy_count = 0
 start_time = time.time()
 cart_put_list = []
+cartNo = ''
 
 def login(id, password):
     while True:
@@ -114,6 +115,27 @@ def cart_refresh():
             logger.exception(f'{e}')
             continue
 
+def cart_update():
+    response = session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
+        'orderMode': '5',
+        'CART1_001': cartNo,
+        'CART1_002': new_count + 1,
+        'CART1_VALID_GOODS': '',
+        'CART1_GOODS_NM': '(unable to decode value)',
+        'CART1_STOCK_TP': '1',
+        'CART1_SALE_PR': '364',
+        'CART1_CART_PR': '364',
+        'CART1_005': '1',
+        'LENGTH': '1',
+        'OPCODE': 'edit_and_go',
+        'SELECT_CARTNO': '',
+        'SELECT_CARTSEQ': '',
+        'SELECT_ISCD': '',
+        'SELECT_ST': '',
+        'ANCHOR': '',
+        'ORDER_MODE': ''
+    })
+
 def shop_select():
     session.post('https://www.bookoffonline.co.jp/disp/COdRcptStore.jsp', data={
         'submitStoreCd': '10434'
@@ -137,6 +159,7 @@ def star_list(start_time):
         logger.info('検索開始')
         # 中古在庫を50件表示で検索
         driver_star.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
+        logger.info('検索結果')
         # 検索結果のリスト
         elements = driver_star.find_elements_by_xpath('//td[@class=\"buy\"]/..')
         # 検索結果が存在するか確認
@@ -150,7 +173,9 @@ def star_list(start_time):
                     logger.info('在庫あり')
                     link = elm.find_element_by_xpath('td[@class=\"buy\"]/dl/dd/a').get_attribute('href')
                     try:
+                        # print('追加前')
                         session.get(link)
+                        # print('追加後')
                     except Exception as e:
                         logger.exception(f'{e}')
                     eventCart.set()
@@ -173,9 +198,14 @@ def buy(init_process: bool, buy_confirm: bool):
                 return
             eventCart.wait()
             eventCart.clear()
-            driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
-        if not driver.find_elements_by_id('cartempty'):
             logger.info('購入開始')
+            # driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
+            # driver.find_element_by_id('account')
+            cart_update()
+            finish()
+            logger.info('購入完了')
+        if init_process:
+            logger.info('セット開始')
             errors = driver.find_elements_by_xpath('//div[@class=\"error\"]/../../../td[@class=\"check\"]/input[@type=\"checkbox\"]')
             if errors:
                 for error in errors:
@@ -185,19 +215,16 @@ def buy(init_process: bool, buy_confirm: bool):
 
             # ブックオフ店舗で受け取りボタンを押下
             try:
+                global cartNo
                 driver.implicitly_wait(10)
+                cartNo = driver.find_element_by_name('CART1_001').get_attribute('value')
                 driver.find_element_by_xpath('//input[@alt=\"ブックオフ店舗で受け取る\"]').click()
-                if buy_confirm:
-                    driver.find_element_by_id('account')
-                    finish()
-                logger.info('購入完了')
+                logger.info('セット完了')
+                driver.implicitly_wait(0)
+                return
             except Exception as e:
                 logger.exception(f'{e}')
-                logger.info('購入失敗')
-            driver.implicitly_wait(0)
-            if init_process:
-                logger.info('セット完了')
-                return
+                logger.info('セット失敗')
 
 def init():
     driver.set_page_load_timeout(10)
@@ -224,11 +251,15 @@ shop_select()
 cart_refresh()
 logger.info('カートの設定処理完了')
 
+# スレッドの定義
 star_list_th = Thread(target=star_list, args=(start_time,))
 buy_th = Thread(target=buy, args=(False, True))
-# お気に入りに登録している商品で中古の在庫があればカートに保存
+
+# スレッド開始
 star_list_th.start()
 buy_th.start()
+
+#スレッドの完了待ち
 star_list_th.join()
 buy_th.join()
 logger.info('new: {}, buy: {}'.format(new_count, buy_count))
