@@ -19,7 +19,7 @@ now = datetime.now()
 
 # ログの設定
 logging.basicConfig(
-    filename='test{}_{}_{}.log'.format(now.year, now.month, now.day),
+    filename='log/test{}_{}_{}.log'.format(now.year, now.month, now.day),
     level=INFO,
     format='%(levelname)s:%(message)s'
 )
@@ -29,13 +29,13 @@ handler = StreamHandler()
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.propagate = False
-file_handler = FileHandler(filename='test{}_{}_{}.log'.format(now.year, now.month, now.day))
+file_handler = FileHandler(filename='log/test{}_{}_{}.log'.format(now.year, now.month, now.day))
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
-PROCESS_TIME = 60 * 60
+PROCESS_TIME = 60 * 60 * 3
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 
 # chromeのアドレスバーに「chrome://version/」を入力して、そのプロフィールパス
@@ -84,6 +84,7 @@ def login(id, password):
 
 def cart_setting():
     driver.switch_to.window(driver.window_handles[NEW])
+    driver.get(MAIN_URL + '/files/special/list_arrival.html')
     driver.implicitly_wait(10)
     # カートにセッティング
     elements = driver.find_elements_by_xpath('//td[@class=\"table_goods_arrival_title\"]/a')
@@ -102,6 +103,7 @@ def cart_refresh():
     driver.switch_to.window(driver.window_handles[CART])
     while True:
         try:
+
             driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
             elements = driver.find_elements_by_xpath('//input[@src=\"../images/parts/pgs/b_delete110203.gif?20180803\"]')
             if elements:
@@ -155,7 +157,7 @@ def star_list(start_time):
         if (time.time() - start_time) > PROCESS_TIME:
             eventCart.set()
             return
-        time.sleep(0.1)
+        time.sleep(1)
 
 def buy(init_process: bool, buy_confirm: bool):
     driver.switch_to.window(driver.window_handles[CART])
@@ -199,17 +201,8 @@ def buy(init_process: bool, buy_confirm: bool):
 
 def init():
     driver.set_page_load_timeout(10)
-    success_count = 0
     while True:
         try:
-            if success_count == 0:
-                driver.switch_to.window(driver.window_handles[NEW])
-                driver.get(MAIN_URL + '/files/special/list_arrival.html')
-                success_count += 1
-            if success_count == 1:
-                driver.switch_to.window(driver.window_handles[CART])
-                driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
-                success_count += 1
             driver_star.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
             return
         except TimeoutException as e:
@@ -218,9 +211,9 @@ def init():
             logger.error(f'{e}')
 
 driver.execute_script('window.open()')
-# ログイン
-logger.info('初期表示')
+logger.info('初期処理')
 init()
+# ログイン
 logger.info('ログイン処理')
 login(USER_MAIL, USER_PASS)
 # 注文完了画面を表示させるためにカートと店舗を設定
@@ -239,24 +232,3 @@ buy_th.start()
 star_list_th.join()
 buy_th.join()
 logger.info('new: {}, buy: {}'.format(new_count, buy_count))
-
-###
-# https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp
-# orderMode: 5
-# CART1_001: 20201015142336509489
-# CART1_002: 1
-# CART1_VALID_GOODS: 
-# CART1_GOODS_NM: (unable to decode value)
-# CART1_STOCK_TP: 1
-# CART1_SALE_PR: 364
-# CART1_CART_PR: 364
-# CART1_005: 1
-# LENGTH: 1
-# OPCODE: edit_and_go
-# SELECT_CARTNO: 
-# SELECT_CARTSEQ: 
-# SELECT_ISCD: 
-# SELECT_ST: 
-# ANCHOR: 
-# ORDER_MODE: 
-###
