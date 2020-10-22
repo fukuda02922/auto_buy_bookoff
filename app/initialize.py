@@ -11,7 +11,8 @@ from datetime import datetime
 import sys
 import traceback
 import requests
-from threading import Thread, Event
+from bs4 import BeautifulSoup
+from threading import Thread
 from logging import getLogger, StreamHandler, DEBUG, FileHandler, Formatter, INFO
 import logging
 
@@ -58,7 +59,6 @@ CART = 0
 NEW = 1
 
 # イベント一覧
-eventCart = Event()
 new_count = 0
 buy_count = 0
 start_time = time.time()
@@ -76,7 +76,7 @@ def login(id, password):
             loginBtn = driver.find_element_by_xpath('//input[@alt=\"ログイン\"]')
             loginBtn.click()
             for cookie in driver.get_cookies():
-                driver_star.add_cookie(cookie)
+                # driver_star.add_cookie(cookie)
                 session.cookies.set(cookie["name"], cookie["value"])
             return
         except TimeoutException as e:
@@ -116,7 +116,7 @@ def cart_refresh():
             continue
 
 def cart_update():
-    response = session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
+    session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
         'orderMode': '5',
         'CART1_001': cartNo,
         'CART1_002': new_count + 1,
@@ -158,73 +158,52 @@ def star_list(start_time):
     while True:
         logger.info('検索開始')
         # 中古在庫を50件表示で検索
-        driver_star.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
-        logger.info('検索結果')
-        # 検索結果のリスト
-        elements = driver_star.find_elements_by_xpath('//td[@class=\"buy\"]/..')
-        # 検索結果が存在するか確認
-        if elements:
-            # 検索結果をループ
-            for elm in elements:
-                # カートに追加されていないか確認し、追加されていない場合に追加して終了
-                if not elm.find_elements_by_class_name('incart'):
-                    global new_count
-                    new_count += 1
-                    logger.info('在庫あり')
-                    link = elm.find_element_by_xpath('td[@class=\"buy\"]/dl/dd/a').get_attribute('href')
-                    try:
-                        # print('追加前')
-                        session.get(link)
-                        # print('追加後')
-                    except Exception as e:
-                        logger.exception(f'{e}')
-                    eventCart.set()
+        response = session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
+        soup = BeautifulSoup(response.content, 'html.parser')
+        olds = soup.find_all("img", alt="中古をカートに入れる")
+        for old in olds:
+            link = old.parent['href']
+            if not (link in cart_put_list):
+                cart_put_list.append(link)
+                global new_count
+                new_count += 1
+                logger.info('購入開始')
+                session.get(MAIN_URL + link.replace('..', ''))
+                cart_update()
+                finish()
+                logger.info('購入完了')
         if (time.time() - start_time) > PROCESS_TIME:
-            eventCart.set()
             return
-        time.sleep(1)
 
-def buy(init_process: bool, buy_confirm: bool):
-    driver.switch_to.window(driver.window_handles[CART])
+def buy_init():
     while True:
-        try:
-            driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
-            break
-        except TimeoutException as e:
-            logger.exception(f'{e}')
-    while True:
-        if buy_confirm:
-            if (time.time() - start_time) > PROCESS_TIME:
-                return
-            eventCart.wait()
-            eventCart.clear()
-            logger.info('購入開始')
-            # driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
-            # driver.find_element_by_id('account')
-            cart_update()
-            finish()
-            logger.info('購入完了')
-        if init_process:
-            logger.info('セット開始')
-            errors = driver.find_elements_by_xpath('//div[@class=\"error\"]/../../../td[@class=\"check\"]/input[@type=\"checkbox\"]')
-            if errors:
-                for error in errors:
-                    error.click()
-                driver.find_element_by_name('deleteSelectedButton').click()
-                continue
-
-            # ブックオフ店舗で受け取りボタンを押下
+        logger.info('セット開始')
+        driver.switch_to.window(driver.window_handles[CART])
+        while True:
             try:
-                global cartNo
-                driver.implicitly_wait(10)
-                cartNo = driver.find_element_by_name('CART1_001').get_attribute('value')
-                driver.find_element_by_xpath('//input[@alt=\"ブックオフ店舗で受け取る\"]').click()
-                logger.info('セット完了')
-                driver.implicitly_wait(0)
-                return
-            except Exception as e:
+                driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
+                break
+            except TimeoutException as e:
                 logger.exception(f'{e}')
-                logger.info('セット失敗')
+        errors = driver.find_elements_by_xpath('//div[@class=\"error\"]/../../../td[@class=\"check\"]/input[@type=\"checkbox\"]')
+        if errors:
+            for error in errors:
+                error.click()
+            driver.find_element_by_name('deleteSelectedButton').click()
+            continue
+
+        # ブックオフ店舗で受け取りボタンを押下
+        try:
+            global cartNo
+            driver.implicitly_wait(10)
+            cartNo = driver.find_element_by_name('CART1_001').get_attribute('value')
+            driver.find_element_by_xpath('//input[@alt=\"ブックオフ店舗で受け取る\"]').click()
+            logger.info('セット完了')
+            driver.implicitly_wait(0)
+            return
+        except Exception as e:
+            logger.exception(f'{e}')
+            logger.info('セット失敗')
 
 def init():
     driver.set_page_load_timeout(10)
@@ -246,20 +225,23 @@ login(USER_MAIL, USER_PASS)
 # 注文完了画面を表示させるためにカートと店舗を設定
 logger.info('カートの設定処理開始')
 cart_setting()
-buy(True, False)
+buy_init()
 shop_select()
 cart_refresh()
 logger.info('カートの設定処理完了')
 
 # スレッドの定義
 star_list_th = Thread(target=star_list, args=(start_time,))
-buy_th = Thread(target=buy, args=(False, True))
+star_list_th2 = Thread(target=star_list, args=(start_time,))
+star_list_th3 = Thread(target=star_list, args=(start_time,))
 
 # スレッド開始
 star_list_th.start()
-buy_th.start()
+time.sleep(2)
+star_list_th2.start()
+time.sleep(2)
+star_list_th3.start()
 
 #スレッドの完了待ち
 star_list_th.join()
-buy_th.join()
 logger.info('new: {}, buy: {}'.format(new_count, buy_count))
