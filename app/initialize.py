@@ -67,6 +67,7 @@ cartNo = ''
 lock = Lock()
 next_process_star = 0
 wait_time = time.time()
+cart_refreshing = False
 
 def login(id, password):
     while True:
@@ -104,6 +105,7 @@ def cart_setting():
         driver.switch_to.window(driver.window_handles[NEW])
 
 def cart_refresh():
+    cart_refreshing = True
     driver.switch_to.window(driver.window_handles[CART])
     while True:
         try:
@@ -117,6 +119,7 @@ def cart_refresh():
         except Exception as e:
             logger.exception(f'{e}')
             continue
+    cart_refreshing = False
 
 def cart_update(cart_no_seq):
     session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
@@ -145,7 +148,7 @@ def shop_select():
     })
 
 def finish():
-    session.post('https://www.bookoffonline.co.jp/order/COdOrderConfirmRcptStore.jsp', data={
+    response = session.post('https://www.bookoffonline.co.jp/order/COdOrderConfirmRcptStore.jsp', data={
         'BTN_CHECK': 'TempToReal',
         'ORD_UPD_INFO': '',
         'TEXT_CPN_ID': '',
@@ -154,8 +157,7 @@ def finish():
         'x': '123',
         'y': '21'
     })
-    global buy_count
-    buy_count += 1
+    return response.ok
 
 def buy(link):
     lock.acquire()
@@ -180,25 +182,31 @@ def star_list(start_time, index):
     global next_process_star
     global wait_time
     while True:
-        # 中古在庫を20件表示で検索
-        if ((next_process_star == index) and (time.time() - wait_time) > STAR_LIST_INTERNAL_TIME):
-            wait_time = time.time()
-            next_process_count(index)
-            logger.info('検索開始{}'.format(index))
-            response = session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20') # エラー
-            soup = BeautifulSoup(response.content, 'html.parser')
-            olds = soup.find_all("img", alt="中古をカートに入れる")
-            for old in olds:
-                link = old.parent['href']
-                cart_no_seq = buy(link)
-                if not cart_no_seq == 0:
-                    logger.info('購入開始{}'.format(index))
-                    cart_update(cart_no_seq)
-                    finish()
-                    logger.info('購入完了')
-        elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
-            wait_time = time.time()
-            next_process_count(index)
+        if not cart_refreshing:
+            # 中古在庫を20件表示で検索
+            if ((next_process_star == index) and (time.time() - wait_time) > STAR_LIST_INTERNAL_TIME):
+                wait_time = time.time()
+                next_process_count(index)
+                logger.info('検索開始{}'.format(index))
+                response = session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20') # エラー
+                soup = BeautifulSoup(response.content, 'html.parser')
+                olds = soup.find_all("img", alt="中古をカートに入れる")
+                for old in olds:
+                    link = old.parent['href']
+                    cart_no_seq = buy(link)
+                    if not cart_no_seq == 0:
+                        logger.info('購入開始{}'.format(index))
+                        cart_update(cart_no_seq)
+                        if finish():
+                            logger.info('購入完了')
+                            global buy_count
+                            buy_count += 1
+                        else:
+                            logger.info('購入失敗')
+                            cart_refresh()
+            elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
+                wait_time = time.time()
+                next_process_count(index)
         if (time.time() - start_time) > PROCESS_TIME:
             return
 
@@ -224,7 +232,7 @@ def buy_init():
             global cartNo
             driver.implicitly_wait(10)
             cartNo = driver.find_element_by_name('CART1_001').get_attribute('value')
-            driver.find_element_by_xpath('//input[@alt=\"ブックオフ店舗で受け取る\"]').click()
+            # driver.find_element_by_xpath('//input[@alt=\"ブックオフ店舗で受け取る\"]').click()
             logger.info('セット完了')
             driver.implicitly_wait(0)
             return
