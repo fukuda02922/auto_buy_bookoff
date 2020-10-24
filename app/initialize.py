@@ -12,7 +12,7 @@ import sys
 import traceback
 import requests
 from bs4 import BeautifulSoup
-from threading import Thread
+from threading import Thread, Lock
 from logging import getLogger, StreamHandler, DEBUG, FileHandler, Formatter, INFO
 import logging
 
@@ -36,7 +36,8 @@ logger.addHandler(file_handler)
 
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
-PROCESS_TIME = 60 * 60 * 2
+PROCESS_TIME = 60 * 60 * 2  # 処理時間
+STAR_LIST_INTERNAL_TIME = 2 # お気に入りの検索時間の間隔
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 
 # chromeのアドレスバーに「chrome://version/」を入力して、そのプロフィールパス
@@ -51,19 +52,21 @@ options.add_argument('--ignore-certificate-errors')
 options.add_argument('--start-maximized')
 options.add_argument("--log-level=3")
 driver = webdriver.Chrome(options=options)
-driver_star = webdriver.Chrome(options=options)
+# driver_star = webdriver.Chrome(options=options)
 # driver_star2 = webdriver.Chrome(options=options)
 
 STAR_LIST = 0
 CART = 0
 NEW = 1
 
-# イベント一覧
 new_count = 0
 buy_count = 0
 start_time = time.time()
 cart_put_list = []
 cartNo = ''
+lock = Lock()
+next_process_star = 0
+wait_time = time.time()
 
 def login(id, password):
     while True:
@@ -92,7 +95,7 @@ def cart_setting():
     for elm in elements:
         elm.click()
         driver.switch_to.window(driver.window_handles[-1])
-        if driver.find_elements_by_xpath('//img[@alt=\"中古をカートに入れる\"]/..'):
+        if driver.find_elements_by_xpath('//img[@alt=\"中古をカートに入れる\"]/..') and driver.find_elements_by_xpath('//div[@class=\"htmlinclrcpt\" and @style=\"display: block;\"]'):
             driver.find_element_by_xpath('//img[@alt=\"中古をカートに入れる\"]/..').click()
             driver.close()
             driver.implicitly_wait(0)
@@ -115,11 +118,11 @@ def cart_refresh():
             logger.exception(f'{e}')
             continue
 
-def cart_update():
+def cart_update(cart_no_seq):
     session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
         'orderMode': '5',
         'CART1_001': cartNo,
-        'CART1_002': new_count + 1,
+        'CART1_002': cart_no_seq + 1,
         'CART1_VALID_GOODS': '',
         'CART1_GOODS_NM': '(unable to decode value)',
         'CART1_STOCK_TP': '1',
@@ -154,24 +157,48 @@ def finish():
     global buy_count
     buy_count += 1
 
-def star_list(start_time):
+def buy(link):
+    lock.acquire()
+    cart_no_seq = 0
+    if not (link in cart_put_list):
+        cart_put_list.append(link)
+        global new_count
+        new_count += 1
+        cart_no_seq = new_count
+        session.get(MAIN_URL + link.replace('..', ''))
+    lock.release()
+    return cart_no_seq
+
+def next_process_count(index):
+    global next_process_star
+    if index == 8:
+        next_process_star = 0
+    else:
+        next_process_star += 1
+
+def star_list(start_time, index):
+    global next_process_star
+    global wait_time
     while True:
-        logger.info('検索開始')
-        # 中古在庫を50件表示で検索
-        response = session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
-        soup = BeautifulSoup(response.content, 'html.parser')
-        olds = soup.find_all("img", alt="中古をカートに入れる")
-        for old in olds:
-            link = old.parent['href']
-            if not (link in cart_put_list):
-                cart_put_list.append(link)
-                global new_count
-                new_count += 1
-                logger.info('購入開始')
-                session.get(MAIN_URL + link.replace('..', ''))
-                cart_update()
-                finish()
-                logger.info('購入完了')
+        # 中古在庫を20件表示で検索
+        if ((next_process_star == index) and (time.time() - wait_time) > STAR_LIST_INTERNAL_TIME):
+            wait_time = time.time()
+            next_process_count(index)
+            logger.info('検索開始{}'.format(index))
+            response = session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20') # エラー
+            soup = BeautifulSoup(response.content, 'html.parser')
+            olds = soup.find_all("img", alt="中古をカートに入れる")
+            for old in olds:
+                link = old.parent['href']
+                cart_no_seq = buy(link)
+                if not cart_no_seq == 0:
+                    logger.info('購入開始{}'.format(index))
+                    cart_update(cart_no_seq)
+                    finish()
+                    logger.info('購入完了')
+        elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
+            wait_time = time.time()
+            next_process_count(index)
         if (time.time() - start_time) > PROCESS_TIME:
             return
 
@@ -205,43 +232,30 @@ def buy_init():
             logger.exception(f'{e}')
             logger.info('セット失敗')
 
-def init():
-    driver.set_page_load_timeout(10)
-    while True:
-        try:
-            driver_star.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')
-            return
-        except TimeoutException as e:
-            logger.exception(f'{e}')
-        except Exception as e:
-            logger.error(f'{e}')
-
 driver.execute_script('window.open()')
-logger.info('初期処理')
-init()
-# ログイン
-logger.info('ログイン処理')
-login(USER_MAIL, USER_PASS)
-# 注文完了画面を表示させるためにカートと店舗を設定
-logger.info('カートの設定処理開始')
-cart_setting()
-buy_init()
-shop_select()
-cart_refresh()
-logger.info('カートの設定処理完了')
+try:
+    # ログイン
+    logger.info('ログイン処理')
+    login(USER_MAIL, USER_PASS)
+    # 注文完了画面を表示させるためにカートと店舗を設定
+    logger.info('カートの設定処理開始')
+    cart_setting()
+    buy_init()
+    shop_select()
+    cart_refresh()
+    logger.info('カートの設定処理完了')
 
-# スレッドの定義
-star_list_th = Thread(target=star_list, args=(start_time,))
-star_list_th2 = Thread(target=star_list, args=(start_time,))
-star_list_th3 = Thread(target=star_list, args=(start_time,))
+    # スレッドの定義
+    th_pool = [Thread(target=star_list, args=(start_time, index)) for index in range(9)]
 
-# スレッド開始
-star_list_th.start()
-time.sleep(2)
-star_list_th2.start()
-time.sleep(2)
-star_list_th3.start()
+    # スレッド開始
+    for th in th_pool:
+        th.start()
+        time.sleep(1)
 
-#スレッドの完了待ち
-star_list_th.join()
-logger.info('new: {}, buy: {}'.format(new_count, buy_count))
+    #スレッドの完了待ち
+    for th in th_pool:
+        th.join()
+    logger.info('new: {}, buy: {}'.format(new_count, buy_count))
+except Exception as e:
+    logger.exception(f'{e}')
