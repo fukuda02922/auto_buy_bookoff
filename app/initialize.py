@@ -149,7 +149,7 @@ def finish():
         'BTN_CHECK': 'TempToReal',
         'ORD_UPD_INFO': '',
         'TEXT_CPN_ID': '',
-        'deleteBookmarkAndAlertMail': '1',
+        'deleteBookmarkAndAlertMail': '0',
         'omi': '62690436',
         'x': '123',
         'y': '21'
