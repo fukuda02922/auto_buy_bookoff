@@ -15,17 +15,12 @@ from bs4 import BeautifulSoup
 from threading import Thread, Lock
 from logging import getLogger, StreamHandler, DEBUG, FileHandler, Formatter, INFO
 import logging
-import os, os.path
-import pathlib
 
 now = datetime.now()
-filename = 'log/test{}_{}_{}.log'.format(now.year, now.month, now.day)
-if not os.path.exists(filename):
-	pathlib.Path(filename)
 
 # ログの設定
 logging.basicConfig(
-    filename=filename,
+    filename='log/test{}_{}_{}.log'.format(now.year, now.month, now.day),
     level=INFO,
     format='%(levelname)s:%(message)s'
 )
@@ -35,7 +30,7 @@ handler = StreamHandler()
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.propagate = False
-file_handler = FileHandler(filename=filename)
+file_handler = FileHandler(filename='log/test{}_{}_{}.log'.format(now.year, now.month, now.day))
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
@@ -193,11 +188,7 @@ def star_list(start_time, index):
                 wait_time = time.time()
                 next_process_count(index)
                 logger.info('検索開始{}'.format(index))
-                try:
-                	response = session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20') # エラー
-                except Exception as e:
-                	logger.exception(f'{e}')
-                	continue
+                response = session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20') # エラー
                 soup = BeautifulSoup(response.content, 'html.parser')
                 olds = soup.find_all("img", alt="中古をカートに入れる")
                 for old in olds:

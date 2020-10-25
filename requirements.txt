@@ -1,5 +1,5 @@
 selenium >= 3.141.0
 chromedriver-binary==85.0.4183.87
 requests >=2.24.0
-beautifulsoup4 >=4.9.3
+beautifulsoup4 >= 4.9.3
 lxml >=4.6.1
