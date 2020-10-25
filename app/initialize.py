@@ -12,7 +12,7 @@ import sys
 import traceback
 import requests
 from bs4 import BeautifulSoup
-from threading import Thread, Lock
+from threading import Thread, Lock, Event
 from logging import getLogger, StreamHandler, DEBUG, FileHandler, Formatter, INFO
 import logging
 import os, os.path
@@ -73,6 +73,8 @@ lock = Lock()
 next_process_star = 0
 wait_time = time.time()
 cart_refreshing = False
+buy_processing = False
+buy_event = Event()
 
 def login(id, password):
     while True:
@@ -186,8 +188,12 @@ def next_process_count(index):
 def star_list(start_time, index):
     global next_process_star
     global wait_time
+    global buy_processing
     while True:
-        if not cart_refreshing:
+        if buy_processing:
+            buy_event.wait()
+            buy_event.clear()
+        if (not cart_refreshing):
             # 中古在庫を20件表示で検索
             if ((next_process_star == index) and (time.time() - wait_time) > STAR_LIST_INTERNAL_TIME):
                 wait_time = time.time()
@@ -200,19 +206,23 @@ def star_list(start_time, index):
                 	continue
                 soup = BeautifulSoup(response.content, 'html.parser')
                 olds = soup.find_all("img", alt="中古をカートに入れる")
-                for old in olds:
-                    link = old.parent['href']
-                    cart_no_seq = buy(link)
-                    if not cart_no_seq == 0:
-                        logger.info('購入開始{}'.format(index))
-                        cart_update(cart_no_seq)
-                        if finish():
-                            logger.info('購入完了')
-                            global buy_count
-                            buy_count += 1
-                        else:
-                            logger.info('購入失敗')
-                            cart_refresh()
+                if olds:
+                    buy_processing = True
+                    for old in olds:
+                        link = old.parent['href']
+                        cart_no_seq = buy(link)
+                        if not cart_no_seq == 0:
+                            logger.info('購入開始{}'.format(index))
+                            cart_update(cart_no_seq)
+                            if finish():
+                                logger.info('購入完了')
+                                global buy_count
+                                buy_count += 1
+                            else:
+                                logger.info('購入失敗')
+                                cart_refresh()
+                    buy_processing = False
+                    buy_event.set()
             elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
                 wait_time = time.time()
                 next_process_count(index)
