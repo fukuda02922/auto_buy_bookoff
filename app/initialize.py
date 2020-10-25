@@ -19,7 +19,7 @@ import os, os.path
 import pathlib
 
 now = datetime.now()
-filename = 'log/test{}_{}_{}.log'.format(now.year, now.month, now.day)
+filename = 'C:/Workspace/auto_buy_bookoff/app/log/test{}_{}_{}.log'.format(now.year, now.month, now.day)
 if not os.path.exists(filename):
 	pathlib.Path(filename)
 
