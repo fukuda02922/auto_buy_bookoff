@@ -4,6 +4,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support import expected_conditions
 from selenium.common.exceptions import TimeoutException
+from auto_buy_log import Log
 
 import chromedriver_binary
 import time
@@ -13,41 +14,16 @@ import traceback
 import requests
 from bs4 import BeautifulSoup
 from threading import Thread, Lock, Event
-from logging import getLogger, StreamHandler, DEBUG, FileHandler, Formatter, INFO
-import logging
-import os, os.path
-import pathlib
 
 now = datetime.now()
-filename = 'C:/Workspace/auto_buy_bookoff/app/log/test{}_{}_{}.log'.format(now.year, now.month, now.day)
-if not os.path.exists(filename):
-	pathlib.Path(filename)
-
-# ログの設定
-logging.basicConfig(
-    filename=filename,
-    level=INFO,
-    format='%(levelname)s:%(message)s'
-)
-logger = getLogger(__name__)
-formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-handler = StreamHandler()
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.propagate = False
-file_handler = FileHandler(filename=filename)
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
+log = Log('bookoff.log', now)
+log.create_log()
 
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
 PROCESS_TIME = 60 * 60 * 2  # 処理時間
 STAR_LIST_INTERNAL_TIME = 2 # お気に入りの検索時間の間隔
 MAIN_URL = 'https://www.bookoffonline.co.jp'
-
-# chromeのアドレスバーに「chrome://version/」を入力して、そのプロフィールパス
-# USER_DATA_DIR = 'UserData'
-# USER_DATA_DIR = '/Users/y.fukuda/Library/Application Support/Google/Chrome/Default/Default'
 
 session = requests.session()
 options = webdriver.chrome.options.Options()
@@ -57,8 +33,6 @@ options.add_argument('--ignore-certificate-errors')
 options.add_argument('--start-maximized')
 options.add_argument("--log-level=3")
 driver = webdriver.Chrome(options=options)
-# driver_star = webdriver.Chrome(options=options)
-# driver_star2 = webdriver.Chrome(options=options)
 
 STAR_LIST = 0
 CART = 0
@@ -87,11 +61,10 @@ def login(id, password):
             loginBtn = driver.find_element_by_xpath('//input[@alt=\"ログイン\"]')
             loginBtn.click()
             for cookie in driver.get_cookies():
-                # driver_star.add_cookie(cookie)
                 session.cookies.set(cookie["name"], cookie["value"])
             return
         except TimeoutException as e:
-            logger.exception(f'{e}')
+            log.logger.exception(f'{e}')
             continue
 
 def cart_setting():
@@ -124,7 +97,7 @@ def cart_refresh():
             else:
                 return
         except Exception as e:
-            logger.exception(f'{e}')
+            log.logger.exception(f'{e}')
             continue
     cart_refreshing = False
 
@@ -198,11 +171,11 @@ def star_list(start_time, index):
             if ((next_process_star == index) and (time.time() - wait_time) > STAR_LIST_INTERNAL_TIME):
                 wait_time = time.time()
                 next_process_count(index)
-                logger.info('検索開始{}'.format(index))
+                log.logger.info('検索開始{}'.format(index))
                 try:
                 	response = session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20') # エラー
                 except Exception as e:
-                	logger.exception(f'{e}')
+                	log.logger.exception(f'{e}')
                 	continue
                 soup = BeautifulSoup(response.content, 'html.parser')
                 olds = soup.find_all("img", alt="中古をカートに入れる")
@@ -212,14 +185,14 @@ def star_list(start_time, index):
                         link = old.parent['href']
                         cart_no_seq = buy(link)
                         if not cart_no_seq == 0:
-                            logger.info('購入開始{}'.format(index))
+                            log.logger.info('購入開始{}'.format(index))
                             cart_update(cart_no_seq)
                             if finish():
-                                logger.info('購入完了')
+                                log.logger.info('購入完了')
                                 global buy_count
                                 buy_count += 1
                             else:
-                                logger.info('購入失敗')
+                                log.logger.info('購入失敗')
                                 cart_refresh()
                     buy_processing = False
                     buy_event.set()
@@ -231,14 +204,14 @@ def star_list(start_time, index):
 
 def buy_init():
     while True:
-        logger.info('セット開始')
+        log.logger.info('セット開始')
         driver.switch_to.window(driver.window_handles[CART])
         while True:
             try:
                 driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
                 break
             except TimeoutException as e:
-                logger.exception(f'{e}')
+                log.logger.exception(f'{e}')
         errors = driver.find_elements_by_xpath('//div[@class=\"error\"]/../../../td[@class=\"check\"]/input[@type=\"checkbox\"]')
         if errors:
             for error in errors:
@@ -252,25 +225,25 @@ def buy_init():
             driver.implicitly_wait(10)
             cartNo = driver.find_element_by_name('CART1_001').get_attribute('value')
             # driver.find_element_by_xpath('//input[@alt=\"ブックオフ店舗で受け取る\"]').click()
-            logger.info('セット完了')
+            log.logger.info('セット完了')
             driver.implicitly_wait(0)
             return
         except Exception as e:
-            logger.exception(f'{e}')
-            logger.info('セット失敗')
+            log.logger.exception(f'{e}')
+            log.logger.info('セット失敗')
 
 driver.execute_script('window.open()')
 try:
     # ログイン
-    logger.info('ログイン処理')
+    log.logger.info('ログイン処理')
     login(USER_MAIL, USER_PASS)
     # 注文完了画面を表示させるためにカートと店舗を設定
-    logger.info('カートの設定処理開始')
+    log.logger.info('カートの設定処理開始')
     cart_setting()
     buy_init()
     shop_select()
     cart_refresh()
-    logger.info('カートの設定処理完了')
+    log.logger.info('カートの設定処理完了')
 
     # スレッドの定義
     th_pool = [Thread(target=star_list, args=(start_time, index)) for index in range(9)]
@@ -283,6 +256,6 @@ try:
     #スレッドの完了待ち
     for th in th_pool:
         th.join()
-    logger.info('new: {}, buy: {}'.format(new_count, buy_count))
+    log.logger.info('new: {}, buy: {}'.format(new_count, buy_count))
 except Exception as e:
-    logger.exception(f'{e}')
+    log.logger.exception(f'{e}')
