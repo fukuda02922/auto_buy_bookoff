@@ -12,6 +12,7 @@ from datetime import datetime
 import sys
 import traceback
 import requests
+from requests import Session
 from bs4 import BeautifulSoup
 from threading import Thread, Lock, Event
 
@@ -22,10 +23,13 @@ log.create_log()
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
 PROCESS_TIME = 60 * 60 * 2  # 処理時間
-STAR_LIST_INTERNAL_TIME = 2 # お気に入りの検索時間の間隔
+STAR_LIST_INTERNAL_TIME = 2  # お気に入りの検索時間の間隔
+TH_COUNT = 4 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 
-session = requests.session()
+star_session = requests.Session()
+buy_session = requests.Session()
+
 options = webdriver.chrome.options.Options()
 options.add_argument('--headless')
 options.add_argument('--disable-application-cache')
@@ -60,12 +64,16 @@ def login(id, password):
             elmPass.send_keys(password)
             loginBtn = driver.find_element_by_xpath('//input[@alt=\"ログイン\"]')
             loginBtn.click()
-            for cookie in driver.get_cookies():
-                session.cookies.set(cookie["name"], cookie["value"])
+            set_cookie(star_session)
+            set_cookie(buy_session)
             return
         except TimeoutException as e:
             log.logger.exception(f'{e}')
             continue
+
+def set_cookie(session: Session):
+    for cookie in driver.get_cookies():
+        session.cookies.set(cookie["name"], cookie["value"])
 
 def cart_setting():
     driver.switch_to.window(driver.window_handles[NEW])
@@ -102,7 +110,7 @@ def cart_refresh():
     cart_refreshing = False
 
 def cart_update(cart_no_seq):
-    session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
+    buy_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
         'orderMode': '5',
         'CART1_001': cartNo,
         'CART1_002': cart_no_seq + 1,
@@ -123,12 +131,12 @@ def cart_update(cart_no_seq):
     })
 
 def shop_select():
-    session.post('https://www.bookoffonline.co.jp/disp/COdRcptStore.jsp', data={
+    buy_session.post('https://www.bookoffonline.co.jp/disp/COdRcptStore.jsp', data={
         'submitStoreCd': '10434'
     })
 
 def finish():
-    response = session.post('https://www.bookoffonline.co.jp/order/COdOrderConfirmRcptStore.jsp', data={
+    response = buy_session.post('https://www.bookoffonline.co.jp/order/COdOrderConfirmRcptStore.jsp', data={
         'BTN_CHECK': 'TempToReal',
         'ORD_UPD_INFO': '',
         'TEXT_CPN_ID': '',
@@ -147,13 +155,13 @@ def buy(link):
         global new_count
         new_count += 1
         cart_no_seq = new_count
-        session.get(MAIN_URL + link.replace('..', ''))
+        buy_session.get(MAIN_URL + link.replace('..', ''))
     lock.release()
     return cart_no_seq
 
 def next_process_count(index):
     global next_process_star
-    if index == 8:
+    if index == TH_COUNT - 1:
         next_process_star = 0
     else:
         next_process_star += 1
@@ -162,6 +170,8 @@ def star_list(start_time, index):
     global next_process_star
     global wait_time
     global buy_processing
+    global star_session
+    global buy_session
     while True:
         if buy_processing:
             buy_event.wait()
@@ -173,13 +183,15 @@ def star_list(start_time, index):
                 next_process_count(index)
                 log.logger.info('検索開始{}'.format(index))
                 try:
-                	response = session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20') # エラー
+                	response = star_session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')  # エラー
                 except Exception as e:
                 	log.logger.exception(f'{e}')
                 	continue
+                log.logger.info('検索結果{}'.format(index))
                 soup = BeautifulSoup(response.content, 'html.parser')
                 olds = soup.find_all("img", alt="中古をカートに入れる")
                 if olds:
+                    star_session.close()
                     buy_processing = True
                     for old in olds:
                         link = old.parent['href']
@@ -195,6 +207,8 @@ def star_list(start_time, index):
                                 log.logger.info('購入失敗')
                                 cart_refresh()
                     buy_processing = False
+                    star_session = requests.Session()
+                    set_cookie(star_session)
                     buy_event.set()
             elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
                 wait_time = time.time()
@@ -246,7 +260,7 @@ try:
     log.logger.info('カートの設定処理完了')
 
     # スレッドの定義
-    th_pool = [Thread(target=star_list, args=(start_time, index)) for index in range(9)]
+    th_pool = [Thread(target=star_list, args=(start_time, index)) for index in range(TH_COUNT)]
 
     # スレッド開始
     for th in th_pool:
