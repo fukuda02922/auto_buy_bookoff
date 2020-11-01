@@ -192,6 +192,7 @@ def star_list(start_time, index):
                 olds = soup.find_all("img", alt="中古をカートに入れる")
                 if olds:
                     star_session.close()
+                    star_session = None
                     buy_processing = True
                     for old in olds:
                         link = old.parent['href']
@@ -210,6 +211,7 @@ def star_list(start_time, index):
                     star_session = requests.Session()
                     set_cookie(star_session)
                     buy_event.set()
+                    [log.logger.info(book_name.string) for book_name in soup.select("div.titleCmc > a")]
             elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
                 wait_time = time.time()
                 next_process_count(index)
