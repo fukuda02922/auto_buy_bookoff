@@ -12,6 +12,7 @@ from datetime import datetime
 import sys
 import traceback
 import requests
+import re
 from requests import Session
 from bs4 import BeautifulSoup
 from threading import Thread, Lock, Event
@@ -53,6 +54,7 @@ wait_time = time.time()
 cart_refreshing = False
 buy_processing = False
 buy_event = Event()
+regex = r'[0-9]{10}'
 
 def login(id, password):
     while True:
@@ -129,6 +131,7 @@ def cart_update(cart_no_seq):
         'ANCHOR': '',
         'ORDER_MODE': ''
     })
+    log.logger.info('カート更新完了[cartNo:{},cartSeq:{}]'.format(cartNo, cart_no_seq + 1))
 
 def shop_select():
     buy_session.post('https://www.bookoffonline.co.jp/disp/COdRcptStore.jsp', data={
@@ -147,15 +150,16 @@ def finish():
     })
     return response.ok
 
-def buy(link):
+def buy(iscd):
     lock.acquire()
     cart_no_seq = 0
-    if not (link in cart_put_list):
-        cart_put_list.append(link)
+    if not (iscd in cart_put_list):
+        cart_put_list.append(iscd)
         global new_count
         new_count += 1
         cart_no_seq = new_count
-        buy_session.get(MAIN_URL + link.replace('..', ''))
+        buy_session.get(MAIN_URL + '/disp/CSfAddSession_001.jsp?iscd={}&st=1'.format(iscd))
+        log.logger.info('カート追加完了[{}]'.format(iscd))
     lock.release()
     return cart_no_seq
 
@@ -195,8 +199,8 @@ def star_list(start_time, index):
                     star_session = None
                     buy_processing = True
                     for old in olds:
-                        link = old.parent['href']
-                        cart_no_seq = buy(link)
+                        match = re.search(regex, old.parent['href'])
+                        cart_no_seq = buy(match.group())
                         if not cart_no_seq == 0:
                             log.logger.info('購入開始{}'.format(index))
                             cart_update(cart_no_seq)
