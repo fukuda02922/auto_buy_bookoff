@@ -12,9 +12,8 @@ from datetime import datetime
 import sys
 import traceback
 import requests
-import re
+import json
 from requests import Session
-from bs4 import BeautifulSoup
 from threading import Thread, Lock, Event
 
 now = datetime.now()
@@ -27,6 +26,15 @@ PROCESS_TIME = 60 * 60 * 2  # 処理時間
 STAR_LIST_INTERNAL_TIME = 2  # お気に入りの検索時間の間隔
 TH_COUNT = 4 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
+### 会員番号
+# 以下の手順で設定する
+# 1. ログインしてお気に入り画面を開く
+# 2. F12キーなどでデベロッパーツールを表示
+# 3. Networkタブを開く
+# 4. 左上にあるテキストボックス(filter)に「api」と入力する
+# 5. リロードする
+# 6. Nameエリアに数字だけ表示されている通信があるので、それを設定する(urlはhttps://www.bookoffonline.co.jp/spf-api2/goods_souko/bookmark/.....)
+memNo = '8763947'
 
 star_session = requests.Session()
 buy_session = requests.Session()
@@ -54,7 +62,6 @@ wait_time = time.time()
 cart_refreshing = False
 buy_processing = False
 buy_event = Event()
-regex = r'[0-9]{10}'
 
 def login(id, password):
     while True:
@@ -96,19 +103,23 @@ def cart_setting():
 
 def cart_refresh():
     cart_refreshing = True
-    driver.switch_to.window(driver.window_handles[CART])
     while True:
         try:
-
-            driver.get(MAIN_URL + '/disp/CCtViewCart_001.jsp')
-            elements = driver.find_elements_by_xpath('//input[@src=\"../images/parts/pgs/b_delete110203.gif?20180803\"]')
-            if elements:
-                elements[0].click()
-            else:
-                return
+            response = buy_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
+                'CART1_001': cartNo,
+                'CART1_002': new_count + 1,
+                'CART1_GOODS_NM': '(unable to decode value)',
+                'CART1_STOCK_TP': '1',
+                'CART1_SALE_PR': '364',
+                'CART1_CART_PR': '364',
+                'CART1_005': '1',
+                'LENGTH': '1',
+                'OPCODE': 'clear',
+            })
+            if response.ok:
+                break
         except Exception as e:
             log.logger.exception(f'{e}')
-            continue
     cart_refreshing = False
 
 def cart_update(cart_no_seq):
@@ -141,14 +152,9 @@ def shop_select():
 def finish():
     response = buy_session.post('https://www.bookoffonline.co.jp/order/COdOrderConfirmRcptStore.jsp', data={
         'BTN_CHECK': 'TempToReal',
-        'ORD_UPD_INFO': '',
-        'TEXT_CPN_ID': '',
-        'deleteBookmarkAndAlertMail': '0',
-        'omi': '62690436',
-        'x': '123',
-        'y': '21'
+        'deleteBookmarkAndAlertMail': '0'
     })
-    return response.ok
+    return response.ok and response.url != 'https://www.bookoffonline.co.jp/disp/CCtViewCart_001.jsp?e=ORD_NO_STOCK_ERR'
 
 def buy(iscd):
     lock.acquire()
@@ -158,7 +164,7 @@ def buy(iscd):
         global new_count
         new_count += 1
         cart_no_seq = new_count
-        buy_session.get(MAIN_URL + '/disp/CSfAddSession_001.jsp?iscd={}&st=1'.format(iscd))
+        buy_session.post(MAIN_URL + '/disp/CSfAddSession_001.jsp', data={'iscd': iscd, 'st' : 1})
         log.logger.info('カート追加完了[{}]'.format(iscd))
     lock.release()
     return cart_no_seq
@@ -187,20 +193,23 @@ def star_list(start_time, index):
                 next_process_count(index)
                 log.logger.info('検索開始{}'.format(index))
                 try:
-                	response = star_session.get(MAIN_URL + '/disp/BSfDispBookMarkAlertMailInfo.jsp?ss=u&&row=20')  # エラー
+                	response = star_session.get(MAIN_URL + '/spf-api2/goods_souko/bookmark/' + memNo)  # エラー
                 except Exception as e:
                 	log.logger.exception(f'{e}')
                 	continue
                 log.logger.info('検索結果{}'.format(index))
-                soup = BeautifulSoup(response.content, 'html.parser')
-                olds = soup.find_all("img", alt="中古をカートに入れる")
-                if olds:
+                star_list_json = json.loads(response.content)
+                isCdList = []
+                for rcpt in star_list_json['rcptList']:
+                    if rcpt['rcpt_flg'] == 'true':
+                        isCdList.append(rcpt['instorecode'])
+
+                if isCdList and (star_session != None):
                     star_session.close()
                     star_session = None
                     buy_processing = True
-                    for old in olds:
-                        match = re.search(regex, old.parent['href'])
-                        cart_no_seq = buy(match.group())
+                    for iscd in isCdList:
+                        cart_no_seq = buy(iscd)
                         if not cart_no_seq == 0:
                             log.logger.info('購入開始{}'.format(index))
                             cart_update(cart_no_seq)
@@ -215,7 +224,6 @@ def star_list(start_time, index):
                     star_session = requests.Session()
                     set_cookie(star_session)
                     buy_event.set()
-                    [log.logger.info(book_name.string) for book_name in soup.select("div.titleCmc > a")]
             elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
                 wait_time = time.time()
                 next_process_count(index)
