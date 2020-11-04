@@ -1,0 +1,101 @@
+var BolGoodsSouko = {
+	init : function(instoreCode, count, stockTp) {
+		this.get(instoreCode, this, count, stockTp);
+	},
+
+	get : function(instorecode, thisVar, count, stockTp) {
+		var ajax_url = '//' + location.host + '/spf-api2/goods_souko/' + instorecode;
+		var params = {
+			type : 'GET',
+			url : ajax_url,
+			dataType : 'json',
+			contentType: "application/json; charset=shift-jis",
+			timeout: 2000,
+			success: function(response){
+				var result = response;
+				thisVar.ajaxResult = result;
+				thisVar.count(result, count, stockTp);
+				return response;
+			},
+			error : function(xhr, textStatus, errorThrown){
+				return null;
+			},
+		};
+		$.ajax(params);
+	},
+
+	count : function(result, count, stockTp) {
+		var goodsSouko = $(".js_goods_souko_" + count);
+		if(result.used_warehouse > 0 && stockTp == '1'){
+			var elment = "<img src=\"../images/parts/shop-receive-ico.png\" />"
+			goodsSouko.append(elment);
+		}
+
+	}
+}
+
+var BolGoodsSoukoCart = {
+
+	ajaxResult : null,
+
+	get : function(cartNo, memNo, thisVar) {
+		var ajaxUrl = '//' + location.host + '/spf-api2/goods_souko/cart/' + cartNo + '/' + memNo;
+		var params = {
+			type : 'GET',
+			url : ajaxUrl,
+			dataType : 'json',
+			contentType : "application/json; charset=shift-jis",
+			timeout : 2000,
+			async: false,
+			success : function(response) {
+				var result = response;
+				thisVar.ajaxResult = result;
+				return response;
+			},
+			error : function(xhr, textStatus, errorThrown) {
+				return null;
+			},
+		};
+		$.ajax(params);
+	},
+
+	init : function(cartNo, memNo) {
+		if(cartNo != null){
+			this.get(cartNo, memNo, this);
+		}
+	},
+
+	dispRcptStore : function(instorecode, count, stockTp) {
+
+		var goodsSouko = $(".js_goods_souko_" + count);
+
+		var id = setInterval(function () {
+			if (this.ajaxResult != null && this.ajaxResult != undefined) {
+				clearInterval(id);
+			}
+		}, 100);
+
+		var result = this.ajaxResult;
+		if(result == null){
+			return;
+		}
+		var i = 0;
+		for(i; i < result.rcptList.length; i++){
+			if(result.rcptList[i].instorecode === instorecode)
+				if(result.rcptList[i].rcpt_flg == 'true' && stockTp == '1') {
+					var elment = "<img src=\"../images/parts/shop-receive-ico.png\" />"
+						goodsSouko.append(elment);
+				}
+		}
+	}
+};
+
+
+### ブックマーク取得
+https://www.bookoffonline.co.jp/spf-api2/goods_souko/bookmark/8763947 <- ユーザidと思われる。
+
+### カートの中身取得
+https://www.bookoffonline.co.jp/spf-api2/goods_souko/cart/20201104164553981046 <-cartNo /8763947 <-ユーザidと思われる。
+
+### ショップ情報取得
+https://www.bookoffonline.co.jp/spf-api2/rcptstore/2020110417023745 <- cartNo
