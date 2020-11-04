@@ -23,7 +23,7 @@ log.create_log()
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
 PROCESS_TIME = 60 * 60 * 2  # 処理時間
-STAR_LIST_INTERNAL_TIME = 2  # お気に入りの検索時間の間隔
+STAR_LIST_INTERNAL_TIME = 0.2  # お気に入りの検索時間の間隔
 TH_COUNT = 4 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 ### 会員番号
@@ -124,23 +124,11 @@ def cart_refresh():
 
 def cart_update(cart_no_seq):
     buy_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
-        'orderMode': '5',
         'CART1_001': cartNo,
         'CART1_002': cart_no_seq + 1,
-        'CART1_VALID_GOODS': '',
-        'CART1_GOODS_NM': '(unable to decode value)',
-        'CART1_STOCK_TP': '1',
-        'CART1_SALE_PR': '364',
-        'CART1_CART_PR': '364',
         'CART1_005': '1',
         'LENGTH': '1',
-        'OPCODE': 'edit_and_go',
-        'SELECT_CARTNO': '',
-        'SELECT_CARTSEQ': '',
-        'SELECT_ISCD': '',
-        'SELECT_ST': '',
-        'ANCHOR': '',
-        'ORDER_MODE': ''
+        'OPCODE': 'edit_and_go'
     })
     log.logger.info('カート更新完了[cartNo:{},cartSeq:{}]'.format(cartNo, cart_no_seq + 1))
 

@@ -90,6 +90,7 @@ var BolGoodsSoukoCart = {
 	}
 };
 
+### API一覧
 
 ### ブックマーク取得
 https://www.bookoffonline.co.jp/spf-api2/goods_souko/bookmark/8763947 <- ユーザidと思われる。
@@ -97,5 +98,13 @@ https://www.bookoffonline.co.jp/spf-api2/goods_souko/bookmark/8763947 <- ユー�
 ### カートの中身取得
 https://www.bookoffonline.co.jp/spf-api2/goods_souko/cart/20201104164553981046 <-cartNo /8763947 <-ユーザidと思われる。
 
+### 商品の存在確認
+https://www.bookoffonline.co.jp/spf-api2/goods_souko/0019528164 <- 商品cd(iscd)
+
 ### ショップ情報取得
 https://www.bookoffonline.co.jp/spf-api2/rcptstore/2020110417023745 <- cartNo
+
+### 商品情報取得
+https://www.bookoffonline.co.jp/bolapi/api/goods/0019528164 <- 商品cd(iscd)
+
+
