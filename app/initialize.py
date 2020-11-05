@@ -22,9 +22,9 @@ log.create_log()
 
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
-PROCESS_TIME = 60 * 60 * 2  # 処理時間
-STAR_LIST_INTERNAL_TIME = 0.2  # お気に入りの検索時間の間隔
-TH_COUNT = 4 # スレッド数
+PROCESS_TIME = 60 * 60 * 1  # 処理時間
+STAR_LIST_INTERNAL_TIME = 0  # お気に入りの検索時間の間隔
+TH_COUNT = 1 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 ### 会員番号
 # 以下の手順で設定する
@@ -54,14 +54,17 @@ NEW = 1
 new_count = 0
 buy_count = 0
 start_time = time.time()
-cart_put_list = []
+buy_put_list = []
 cartNo = ''
 lock = Lock()
+lock_buy = Lock()
 next_process_star = 0
 wait_time = time.time()
 cart_refreshing = False
 buy_processing = False
 buy_event = Event()
+star_event = Event()
+cart_check = False
 
 def login(id, password):
     while True:
@@ -122,15 +125,15 @@ def cart_refresh():
             log.logger.exception(f'{e}')
     cart_refreshing = False
 
-def cart_update(cart_no_seq):
+def cart_update():
     buy_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
         'CART1_001': cartNo,
-        'CART1_002': cart_no_seq + 1,
+        'CART1_002': new_count + 1,
         'CART1_005': '1',
         'LENGTH': '1',
         'OPCODE': 'edit_and_go'
     })
-    log.logger.info('カート更新完了[cartNo:{},cartSeq:{}]'.format(cartNo, cart_no_seq + 1))
+    log.logger.info('カート更新完了[cartNo:{},cartSeq:{}]'.format(cartNo, new_count + 1))
 
 def shop_select():
     buy_session.post('https://www.bookoffonline.co.jp/disp/COdRcptStore.jsp', data={
@@ -145,17 +148,12 @@ def finish():
     return response.ok and response.url != 'https://www.bookoffonline.co.jp/disp/CCtViewCart_001.jsp?e=ORD_NO_STOCK_ERR'
 
 def buy(iscd):
-    lock.acquire()
-    cart_no_seq = 0
-    if not (iscd in cart_put_list):
-        cart_put_list.append(iscd)
-        global new_count
-        new_count += 1
-        cart_no_seq = new_count
-        buy_session.post(MAIN_URL + '/disp/CSfAddSession_001.jsp', data={'iscd': iscd, 'st' : 1})
-        log.logger.info('カート追加完了[{}]'.format(iscd))
-    lock.release()
-    return cart_no_seq
+    global new_count
+    new_count += 1
+    global cart_check
+    cart_check = True
+    buy_session.post(MAIN_URL + '/disp/CSfAddSession_001.jsp', data={'iscd': iscd, 'st' : 1})
+    log.logger.info('カート追加完了[{}]'.format(iscd))
 
 def next_process_count(index):
     global next_process_star
@@ -164,7 +162,7 @@ def next_process_count(index):
     else:
         next_process_star += 1
 
-def star_list(start_time, index):
+def run_thread(start_time, index):
     global next_process_star
     global wait_time
     global buy_processing
@@ -172,8 +170,11 @@ def star_list(start_time, index):
     global buy_session
     while True:
         if buy_processing:
-            buy_event.wait()
-            buy_event.clear()
+            star_event.wait()
+            star_event.clear()
+            if cart_check:
+                check_cart()
+                continue
         if (not cart_refreshing):
             # 中古在庫を20件表示で検索
             if ((next_process_star == index) and (time.time() - wait_time) > STAR_LIST_INTERNAL_TIME):
@@ -181,40 +182,71 @@ def star_list(start_time, index):
                 next_process_count(index)
                 log.logger.info('検索開始{}'.format(index))
                 try:
-                	response = star_session.get(MAIN_URL + '/spf-api2/goods_souko/bookmark/' + memNo)  # エラー
+                    response = star_session.get(MAIN_URL + '/spf-api2/goods_souko/bookmark/' + memNo)  # エラー
                 except Exception as e:
-                	log.logger.exception(f'{e}')
-                	continue
+                    log.logger.exception(f'{e}')
+                    continue
                 log.logger.info('検索結果{}'.format(index))
                 star_list_json = json.loads(response.content)
                 isCdList = []
                 for rcpt in star_list_json['rcptList']:
                     if rcpt['rcpt_flg'] == 'true':
                         isCdList.append(rcpt['instorecode'])
-
-                if isCdList and (star_session != None):
-                    star_session.close()
-                    star_session = None
+                lock.acquire()
+                if isCdList and (not buy_processing):
                     buy_processing = True
+                    lock.release()
                     for iscd in isCdList:
-                        cart_no_seq = buy(iscd)
-                        if not cart_no_seq == 0:
-                            log.logger.info('購入開始{}'.format(index))
-                            cart_update(cart_no_seq)
-                            if finish():
-                                log.logger.info('購入完了')
-                                global buy_count
-                                buy_count += 1
-                            else:
-                                log.logger.info('購入失敗')
-                                cart_refresh()
+                        buy_event.set()
+                        buy(iscd)
+                        star_event.wait()
+                        star_event.clear()
                     buy_processing = False
-                    star_session = requests.Session()
-                    set_cookie(star_session)
-                    buy_event.set()
+                    star_event.set()
+                if lock.locked():
+                    lock.release()
             elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
                 wait_time = time.time()
                 next_process_count(index)
+        if (time.time() - start_time) > PROCESS_TIME:
+            return
+
+def check_cart(start_time):
+    global cart_check
+    while True:
+        response = star_session.get(MAIN_URL + '/spf-api2/goods_souko/cart/{}/{}'.format(cartNo, memNo))
+        carts = json.loads(response.content)
+        if 'rcptList' in carts:
+            cart_check = False
+            log.logger.info('カート追加確認')
+            return
+        elif not cart_check:
+            return
+        elif (time.time() - start_time) > PROCESS_TIME:
+            return
+
+# 購入処理（カート更新 -> 確定）
+def main_buy(start_time, index):
+    while True:
+        buy_event.wait()
+        buy_event.clear()
+        check_cart(start_time)
+        lock_buy.acquire()
+        if not (new_count in buy_put_list):
+            buy_put_list.append(new_count)
+            lock_buy.release()
+            log.logger.info('購入開始{}'.format(index))
+            cart_update()
+            if finish():
+                log.logger.info('購入完了')
+                global buy_count
+                buy_count += 1
+            else:
+                log.logger.info('購入失敗')
+                cart_refresh()
+            star_event.set()
+        if lock_buy.locked():
+            lock_buy.release()
         if (time.time() - start_time) > PROCESS_TIME:
             return
 
@@ -261,16 +293,28 @@ try:
     cart_refresh()
     log.logger.info('カートの設定処理完了')
 
-    # スレッドの定義
-    th_pool = [Thread(target=star_list, args=(start_time, index)) for index in range(TH_COUNT)]
+    # お気に入り検索スレッドの定義
+    th_pool_star = [Thread(target=run_thread, args=(start_time, index)) for index in range(TH_COUNT)]
+
+    # 購入スレッドの定義
+    th_pool_buy = [Thread(target=main_buy, args=(start_time, index)) for index in range(1)]
 
     # スレッド開始
-    for th in th_pool:
+    for th in th_pool_star:
+        th.start()
+        time.sleep(1)
+
+    # スレッド開始
+    for th in th_pool_buy:
         th.start()
         time.sleep(1)
 
     #スレッドの完了待ち
-    for th in th_pool:
+    for th in th_pool_star:
+        th.join()
+
+    #スレッドの完了待ち
+    for th in th_pool_buy:
         th.join()
     log.logger.info('new: {}, buy: {}'.format(new_count, buy_count))
 except Exception as e:
