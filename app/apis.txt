@@ -1,3 +1,418 @@
+
+/*
+ * 日本語出力があるのでShift-JIS
+ */
+
+var BolSpfHavingStock = {
+	ajaxResult : null,
+	modalShop : null,
+	defultPrefList : [
+		 {"pref_cd":"01", "pref_nm":"北海道"},
+		 {"pref_cd":"02", "pref_nm":"青森県"},
+		 {"pref_cd":"03", "pref_nm":"岩手県"},
+		 {"pref_cd":"04", "pref_nm":"宮城県"},
+		 {"pref_cd":"05", "pref_nm":"秋田県"},
+		 {"pref_cd":"06", "pref_nm":"山形県"},
+		 {"pref_cd":"07", "pref_nm":"福島県"},
+		 {"pref_cd":"08", "pref_nm":"茨城県"},
+		 {"pref_cd":"09", "pref_nm":"栃木県"},
+		 {"pref_cd":"10", "pref_nm":"群馬県"},
+		 {"pref_cd":"11", "pref_nm":"埼玉県"},
+		 {"pref_cd":"12", "pref_nm":"千葉県"},
+		 {"pref_cd":"13", "pref_nm":"東京都"},
+		 {"pref_cd":"14", "pref_nm":"神奈川県"},
+		 {"pref_cd":"15", "pref_nm":"新潟県"},
+		 {"pref_cd":"16", "pref_nm":"富山県"},
+		 {"pref_cd":"17", "pref_nm":"石川県"},
+		 {"pref_cd":"18", "pref_nm":"福井県"},
+		 {"pref_cd":"19", "pref_nm":"山梨県"},
+		 {"pref_cd":"20", "pref_nm":"長野県"},
+		 {"pref_cd":"21", "pref_nm":"岐阜県"},
+		 {"pref_cd":"22", "pref_nm":"静岡県"},
+		 {"pref_cd":"23", "pref_nm":"愛知県"},
+		 {"pref_cd":"24", "pref_nm":"三重県"},
+		 {"pref_cd":"25", "pref_nm":"滋賀県"},
+		 {"pref_cd":"26", "pref_nm":"京都府"},
+		 {"pref_cd":"27", "pref_nm":"大阪府"},
+		 {"pref_cd":"28", "pref_nm":"兵庫県"},
+		 {"pref_cd":"29", "pref_nm":"奈良県"},
+		 {"pref_cd":"30", "pref_nm":"和歌山県"},
+		 {"pref_cd":"31", "pref_nm":"鳥取県"},
+		 {"pref_cd":"32", "pref_nm":"島根県"},
+		 {"pref_cd":"33", "pref_nm":"岡山県"},
+		 {"pref_cd":"34", "pref_nm":"広島県"},
+		 {"pref_cd":"35", "pref_nm":"山口県"},
+		 {"pref_cd":"36", "pref_nm":"徳島県"},
+		 {"pref_cd":"37", "pref_nm":"香川県"},
+		 {"pref_cd":"38", "pref_nm":"愛媛県"},
+		 {"pref_cd":"39", "pref_nm":"高知県"},
+		 {"pref_cd":"40", "pref_nm":"福岡県"},
+		 {"pref_cd":"41", "pref_nm":"佐賀県"},
+		 {"pref_cd":"42", "pref_nm":"長崎県"},
+		 {"pref_cd":"43", "pref_nm":"熊本県"},
+		 {"pref_cd":"44", "pref_nm":"大分県"},
+		 {"pref_cd":"45", "pref_nm":"宮崎県"},
+		 {"pref_cd":"46", "pref_nm":"鹿児島県"},
+		 {"pref_cd":"47", "pref_nm":"沖縄県"}
+	],
+	get : function(instorecode, thisVar) {
+		var ajax_url = '//' + location.host + '/spf-api2/havingstock/' + instorecode;
+		var params = {
+			type : 'GET',
+			url : ajax_url,
+			dataType : 'json',
+			contentType: "application/json; charset=shift-jis",
+			timeout: 2000,
+			success: function(response){
+				var result = response;
+				thisVar.ajaxResult = result;
+				var cookie_pref = thisVar.getCookiePref();
+				thisVar.createSelectPref(result);
+				thisVar.createSelectCity(result, cookie_pref);
+				thisVar.createShopResult(result, cookie_pref, '-');
+				return response;
+			},
+			error : function(xhr, textStatus, errorThrown){
+				return null;
+			},
+		};
+		$.ajax(params);
+	},
+
+	getCookiePref : function () {
+		var key = 'bol_shop_modal';
+		var get_data = document.cookie;
+		var cv = new Array();
+		var gd = get_data.split(";");
+		var i;
+		for (i = 0; i < gd.length; i++) {
+			var a = gd[i].split("=");
+			a[0] = a[0].replace(" ","");
+			cv[a[0]] = a[1];
+		}
+		if (cv[key]) {
+			if (cv[key] == undefined || cv[key] == null || cv[key] == "") {
+				cv[key] = '-';
+			}
+			return cv[key];
+		} else {
+			return '-';
+		}
+	},
+
+	setCookiePref : function (value) {
+		var key = 'bol_shop_modal';
+		var get_data = document.cookie;
+		var cv = new Array();
+		var gd = get_data.split(";");
+		var i;
+		for (i = 0; i < gd.length; i++) {
+			var a = gd[i].split("=");
+			a[0] = a[0].replace(" ","");
+			cv[a[0]] = a[1];
+		}
+		cv[key] = value;
+		sday = new Date();
+		sday.setTime(sday.getTime() + (5 * 1000 * 60 * 60 * 24));
+		s2day = sday.toGMTString();
+		document.cookie = key + "=" + escape(value) + ";expires=" + s2day;
+		return false;
+	},
+
+	// 都道府県プルダウン生成
+	createSelectPref : function(d) {
+		var result = d.result;
+		var $shopCntValEle = $(".js_shop_count_value");
+		var cookie_pref = this.getCookiePref();
+		if ($shopCntValEle) {
+			if (result.all_store_count == null || result.all_store_count <= 0) {
+				$(".having-shop").css("display", "none");
+			} else {
+				$(".having-shop").css("display", "block");
+				$shopCntValEle.text(result.all_store_count);
+				var pref_items = result.items;
+				var html = "";
+				var $modalShopPrefEle = $(".js_modal_shop_search_pref");
+				$modalShopPrefEle.children('option').remove();
+				html = html + '<option value="-">都道府県を選択</option>';
+
+				$.each(this.defultPrefList, function(index, prefData) {
+					var pref_code = prefData.pref_cd;
+					var pref_name = prefData.pref_nm + '(0)';
+					var pref_select = '';
+					var pref_style = 'style="color:#ccc;"';
+					$.each(pref_items, function(index, pref) {
+						if (prefData.pref_cd == pref.pref_cd) {
+							pref_name = prefData.pref_nm + '(' + pref.pref_store_count + ')';
+							if (pref.pref_store_count > 0) {
+								pref_style = '';
+							} else {
+								pref_style = 'style="color:#ccc;"';
+							}
+						}
+					});
+					if (cookie_pref === prefData.pref_cd) {
+						pref_select = 'selected="selected"';
+					} else {
+						pref_select = '';
+					}
+					html = html + '<option value="'+pref_code+'" '+pref_style+' '+pref_select+'>'+pref_name+'</option>';
+				});
+				$modalShopPrefEle.append(html);
+			}
+		}
+	},
+
+	// 市区町村プルダウン生成
+	createSelectCity : function(d, selectPref) {
+		var result = d.result;
+		var $modalShopPrefEle = $(".js_modal_shop_search_pref");
+		var $modalShopCityEle = $(".js_modal_shop_search_city");
+		var html = '';
+		$modalShopPrefEle.val(selectPref);
+		$modalShopCityEle.children('option').remove();
+		html = html + '<option value="-">市区町村を選択</option>';
+		$modalShopCityEle.append();
+		var pref_items = result.items;
+		$.each(pref_items, function(index, pref) {
+			if (selectPref === pref.pref_cd) {
+				var city_items = pref.items;
+				$.each(city_items, function(index, city) {
+					var city_code = city.city_cd;
+					var city_name = city.city_nm + '(' + city.city_store_count + ')';
+					var city_style = '';
+					if (city.city_store_count > 0) {
+						city_style = '';
+					} else {
+						city_style = 'style="color:#ccc;"';
+					}
+					html = html + '<option value="'+city_code+'" '+city_style+' >'+city_name+'</option>';
+				});
+			}
+		});
+		$modalShopCityEle.html(html);
+	},
+
+	// 店舗情報設定（検索結果の表示）
+	createShopResult : function(d, selectPref, selectCity) {
+		var result = d.result;
+		var $modalShopResultsEle = $(".js_modal_shop_results");
+		var $modalShopCountEle = $(".js_modal_shop_count");
+		var all_store_count = 0;
+		var pref_store_count = 0;
+		var city_store_count = 0;
+		var store_count = 0;
+		all_store_count = result.all_store_count;
+		$modalShopResultsEle.children().remove();
+		var html = '';
+		var pref_items = result.items;
+		$.each(pref_items, function(index, pref) {
+			if (selectPref === '-' || selectPref === pref.pref_cd) {
+				var city_items = pref.items;
+				pref_store_count = pref.pref_store_count;
+				$.each(city_items, function(index, city) {
+					if (selectCity === '-' || selectCity === city.city_cd) {
+						var shop_items = city.items;
+						city_store_count = city.city_store_count;
+						$.each(shop_items, function(index, shop) {
+							html = html + '<div class="shop-modal-results-data">';
+							html = html + '<p class="shop-modal-results-data-url"><a href="' + shop.url + '" target="_blank">' + shop.store_nm + '</a></p>';
+							html = html + '<p class="shop-modal-results-data-address">' + shop.address1 + '</p>';
+							html = html + '</div>';
+						});
+					}
+				});
+			}
+		});
+		$modalShopResultsEle.html(html);
+		$modalShopCountEle.html(all_store_count);
+		if (selectPref === '-') {
+			store_count = all_store_count;
+		} else if (selectCity === '-') {
+			store_count = pref_store_count;
+		} else {
+			store_count = city_store_count;
+		}
+		if (store_count == 0) {
+			$modalShopResultsEle.css("height", "200");
+		}
+	},
+
+	init : function(instoreCode, genre3Code) {
+		this.get(instoreCode, this);
+	},
+
+	changePref : function(pref) {
+		var result = this.ajaxResult;
+		this.setCookiePref(pref);
+		this.createSelectCity(result, pref);
+		this.createShopResult(result, pref, '-');
+	},
+
+	changeCity : function(city) {
+		var result = this.ajaxResult;
+		var pref = $('.js_modal_shop_search_pref').val();
+		this.setCookiePref(pref);
+		this.createShopResult(result, pref, city);
+	},
+
+	openModal : function() {
+		var cookie_pref = this.getCookiePref();
+		var result = this.ajaxResult;
+		this.createSelectPref(result);
+		this.createSelectCity(result, cookie_pref);
+		this.createShopResult(result, cookie_pref, '-');
+
+		this.modalShop = new wcl.Modal({
+			template : '.js_modal_shop'
+		});
+	},
+
+	closeModal : function() {
+		if (this.modalShop != null) {
+			this.modalShop._closeModal();
+		}
+	},
+};
+
+
+// 2019-04-15 BOC-2019-007_BOL店舗受取 ADD START
+var BolSpfGoodsSouko = {
+
+	get : function(instorecode, className, typeKey, thisVar) {
+		var ajaxUrl = '//' + location.host + '/spf-api2/goods_souko/' + instorecode;
+		var params = {
+			type : 'GET',
+			url : ajaxUrl,
+			dataType : 'json',
+			contentType : "application/json; charset=shift-jis",
+			timeout : 2000,
+			success : function(response) {
+				var result = response;
+				thisVar.dispRcptStore(result, className, typeKey);
+				return;
+			},
+			error : function(xhr, textStatus, errorThrown) {
+				return null;
+			},
+		};
+		$.ajax(params);
+	},
+
+	dispRcptStore : function(result, className, typeKey) {
+		if (result.used_warehouse != null && result.used_warehouse >= 1 && typeKey == 'old') {
+			$("." + className).css("display", "block");
+		} else {
+			$("." + className).css("display", "none");
+		}
+	},
+
+	init : function(instoreCode, className, typeKey) {
+		this.get(instoreCode, className, typeKey, this);
+	},
+
+};
+
+var BolSpfGoodsSoukoOtona = {
+
+	ajaxResult : null,
+
+	get : function(groupid, thisVar) {
+		var ajaxUrl = '//' + location.host + '/spf-api2/goods_souko/otona/' + groupid;
+		var params = {
+			type : 'GET',
+			url : ajaxUrl,
+			dataType : 'json',
+			contentType : "application/json; charset=shift-jis",
+			timeout : 2000,
+			async: false,
+			success : function(response) {
+				var result = response;
+				thisVar.ajaxResult = result;
+				return response;
+			},
+			error : function(xhr, textStatus, errorThrown) {
+				return null;
+			},
+		};
+		$.ajax(params);
+	},
+
+	init : function(groupid) {
+		this.get(groupid, this);
+	},
+
+	dispRcptStore : function(instorecode) {
+		var id = setInterval(function () {
+			if (this.ajaxResult != null && this.ajaxResult != undefined) {
+				clearInterval(id);
+			}
+		}, 100);
+
+		var result = this.ajaxResult;
+		var i = 0;
+		for(i; i < result.rcptList.length; i++){
+			if(result.rcptList[i].instorecode === instorecode)
+				if(result.rcptList[i].rcpt_flg == 'true') {
+					$('.shop-receive-possible-ico-area_' + instorecode).css("display","block");
+				} else {
+					$('.shop-receive-possible-ico-area_' + instorecode).css("display","none");
+				}
+		}
+	}
+};
+
+var BolSpfGoodsSoukoBookmark = {
+
+	ajaxResult : null,
+
+	get : function(memNo, thisVar) {
+		var ajaxUrl = '//' + location.host + '/spf-api2/goods_souko/bookmark/' + memNo;
+		var params = {
+			type : 'GET',
+			url : ajaxUrl,
+			dataType : 'json',
+			contentType : "application/json; charset=shift-jis",
+			timeout : 2000,
+			async: false,
+			success : function(response) {
+				var result = response;
+				thisVar.ajaxResult = result;
+				return response;
+			},
+			error : function(xhr, textStatus, errorThrown) {
+				return null;
+			},
+		};
+		$.ajax(params);
+	},
+
+	init : function(memNo) {
+		this.get(memNo, this);
+	},
+
+	dispRcptStore : function(instorecode, stockTp) {
+		var id = setInterval(function () {
+			if (this.ajaxResult != null && this.ajaxResult != undefined) {
+				clearInterval(id);
+			}
+		}, 100);
+
+		var result = this.ajaxResult;
+		var i = 0;
+		for(i; i < result.rcptList.length; i++){
+			if(result.rcptList[i].instorecode === instorecode)
+				if(result.rcptList[i].rcpt_flg == 'true' && stockTp != '3') {
+					$('.shop-receive-possible-ico-area_' + instorecode).css("display","block");
+				} else {
+					$('.shop-receive-possible-ico-area_' + instorecode).css("display","none");
+				}
+		}
+	}
+};
+// 2019-04-15 BOC-2019-007_BOL店舗受取 ADD END
+
+
 var BolGoodsSouko = {
 	init : function(instoreCode, count, stockTp) {
 		this.get(instoreCode, this, count, stockTp);
@@ -99,7 +514,7 @@ https://www.bookoffonline.co.jp/spf-api2/goods_souko/bookmark/8763947 <- ユー�
 https://www.bookoffonline.co.jp/spf-api2/goods_souko/cart/20201104164553981046 <-cartNo /8763947 <-ユーザidと思われる。
 
 ### 商品の存在確認
-https://www.bookoffonline.co.jp/spf-api2/goods_souko/0019528164 <- 商品cd(iscd)
+https:/    /juuu www.bookoffonline.co.jp/spf-api2/goods_souko/0019528164 <- 商品cd(iscd)
 
 ### ショップ情報取得
 https://www.bookoffonline.co.jp/spf-api2/rcptstore/2020110417023745 <- cartNo
