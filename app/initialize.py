@@ -1,20 +1,13 @@
 from selenium import webdriver
-from selenium.webdriver.common.alert import Alert
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support import expected_conditions
 from selenium.common.exceptions import TimeoutException
 from auto_buy_log import Log
-
 import chromedriver_binary
 import time
 from datetime import datetime
-import sys
 import traceback
 import requests
 import json
 from requests import Session
-from threading import Thread, Lock, Event
 
 now = datetime.now()
 log = Log('bookoff.log', now)
@@ -23,8 +16,6 @@ log.create_log()
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
 PROCESS_TIME = 60 * 60 * 2  # 処理時間
-STAR_LIST_INTERNAL_TIME = 0.2  # お気に入りの検索時間の間隔
-TH_COUNT = 4 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 ### 会員番号
 # 以下の手順で設定する
@@ -37,7 +28,6 @@ MAIN_URL = 'https://www.bookoffonline.co.jp'
 memNo = '8763947'
 
 star_session = requests.Session()
-buy_session = requests.Session()
 
 options = webdriver.chrome.options.Options()
 options.add_argument('--headless')
@@ -54,14 +44,7 @@ NEW = 1
 new_count = 0
 buy_count = 0
 start_time = time.time()
-cart_put_list = []
 cartNo = ''
-lock = Lock()
-next_process_star = 0
-wait_time = time.time()
-cart_refreshing = False
-buy_processing = False
-buy_event = Event()
 
 def login(id, password):
     while True:
@@ -74,7 +57,6 @@ def login(id, password):
             loginBtn = driver.find_element_by_xpath('//input[@alt=\"ログイン\"]')
             loginBtn.click()
             set_cookie(star_session)
-            set_cookie(buy_session)
             return
         except TimeoutException as e:
             log.logger.exception(f'{e}')
@@ -102,10 +84,9 @@ def cart_setting():
         driver.switch_to.window(driver.window_handles[NEW])
 
 def cart_refresh():
-    cart_refreshing = True
     while True:
         try:
-            response = buy_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
+            response = star_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
                 'CART1_001': cartNo,
                 'CART1_002': new_count + 1,
                 'CART1_GOODS_NM': '(unable to decode value)',
@@ -120,101 +101,62 @@ def cart_refresh():
                 break
         except Exception as e:
             log.logger.exception(f'{e}')
-    cart_refreshing = False
 
-def cart_update(cart_no_seq):
-    buy_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
+def cart_update():
+    star_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
         'CART1_001': cartNo,
-        'CART1_002': cart_no_seq + 1,
+        'CART1_002': new_count + 1,
         'CART1_005': '1',
         'LENGTH': '1',
         'OPCODE': 'edit_and_go'
     })
-    log.logger.info('カート更新完了[cartNo:{},cartSeq:{}]'.format(cartNo, cart_no_seq + 1))
+    log.logger.info('カート更新完了[cartNo:{},cartSeq:{}]'.format(cartNo, new_count + 1))
 
 def shop_select():
-    buy_session.post('https://www.bookoffonline.co.jp/disp/COdRcptStore.jsp', data={
+    star_session.post('https://www.bookoffonline.co.jp/disp/COdRcptStore.jsp', data={
         'submitStoreCd': '10434'
     })
 
 def finish():
-    response = buy_session.post('https://www.bookoffonline.co.jp/order/COdOrderConfirmRcptStore.jsp', data={
+    response = star_session.post('https://www.bookoffonline.co.jp/order/COdOrderConfirmRcptStore.jsp', data={
         'BTN_CHECK': 'TempToReal',
         'deleteBookmarkAndAlertMail': '0'
     })
     return response.ok and response.url != 'https://www.bookoffonline.co.jp/disp/CCtViewCart_001.jsp?e=ORD_NO_STOCK_ERR'
 
 def buy(iscd):
-    lock.acquire()
-    cart_no_seq = 0
-    if not (iscd in cart_put_list):
-        cart_put_list.append(iscd)
-        global new_count
-        new_count += 1
-        cart_no_seq = new_count
-        buy_session.post(MAIN_URL + '/disp/CSfAddSession_001.jsp', data={'iscd': iscd, 'st' : 1})
-        log.logger.info('カート追加完了[{}]'.format(iscd))
-    lock.release()
-    return cart_no_seq
+    global new_count
+    new_count += 1
+    star_session.post(MAIN_URL + '/disp/CSfAddSession_001.jsp', data={'iscd': iscd, 'st' : 1})
+    log.logger.info('カート追加完了[{}]'.format(iscd))
 
-def next_process_count(index):
-    global next_process_star
-    if index == TH_COUNT - 1:
-        next_process_star = 0
-    else:
-        next_process_star += 1
-
-def star_list(start_time, index):
-    global next_process_star
-    global wait_time
-    global buy_processing
+def star_list(start_time):
     global star_session
-    global buy_session
     while True:
-        if buy_processing:
-            buy_event.wait()
-            buy_event.clear()
-        if (not cart_refreshing):
-            # 中古在庫を20件表示で検索
-            if ((next_process_star == index) and (time.time() - wait_time) > STAR_LIST_INTERNAL_TIME):
-                wait_time = time.time()
-                next_process_count(index)
-                log.logger.info('検索開始{}'.format(index))
-                try:
-                	response = star_session.get(MAIN_URL + '/spf-api2/goods_souko/bookmark/' + memNo)  # エラー
-                except Exception as e:
-                	log.logger.exception(f'{e}')
-                	continue
-                log.logger.info('検索結果{}'.format(index))
-                star_list_json = json.loads(response.content)
-                isCdList = []
-                for rcpt in star_list_json['rcptList']:
-                    if rcpt['rcpt_flg'] == 'true':
-                        isCdList.append(rcpt['instorecode'])
+        log.logger.info('検索開始')
+        try:
+            response = star_session.get(MAIN_URL + '/spf-api2/goods_souko/bookmark/' + memNo)  # エラー
+        except Exception as e:
+            log.logger.exception(f'{e}')
+            continue
+        log.logger.info('検索完了')
+        star_list_json = json.loads(response.content)
+        isCdList = []
+        for rcpt in star_list_json['rcptList']:
+            if rcpt['rcpt_flg'] == 'true':
+                isCdList.append(rcpt['instorecode'])
 
-                if isCdList and (star_session != None):
-                    star_session.close()
-                    star_session = None
-                    buy_processing = True
-                    for iscd in isCdList:
-                        cart_no_seq = buy(iscd)
-                        if not cart_no_seq == 0:
-                            log.logger.info('購入開始{}'.format(index))
-                            cart_update(cart_no_seq)
-                            if finish():
-                                log.logger.info('購入完了')
-                                global buy_count
-                                buy_count += 1
-                            else:
-                                log.logger.info('購入失敗')
-                                cart_refresh()
-                    buy_processing = False
-                    star_session = requests.Session()
-                    set_cookie(star_session)
-                    buy_event.set()
-            elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
-                wait_time = time.time()
-                next_process_count(index)
+        if isCdList:
+            for iscd in isCdList:
+                buy(iscd)
+                cart_update()
+                if finish():
+                    log.logger.info('購入完了')
+                    global buy_count
+                    buy_count += 1
+                else:
+                    log.logger.info('購入失敗')
+                    cart_refresh()
         if (time.time() - start_time) > PROCESS_TIME:
             return
 
@@ -261,17 +203,7 @@ try:
     cart_refresh()
     log.logger.info('カートの設定処理完了')
 
-    # スレッドの定義
-    th_pool = [Thread(target=star_list, args=(start_time, index)) for index in range(TH_COUNT)]
-
-    # スレッド開始
-    for th in th_pool:
-        th.start()
-        time.sleep(1)
-
-    #スレッドの完了待ち
-    for th in th_pool:
-        th.join()
+    star_list(start_time)
     log.logger.info('new: {}, buy: {}'.format(new_count, buy_count))
 except Exception as e:
     log.logger.exception(f'{e}')
