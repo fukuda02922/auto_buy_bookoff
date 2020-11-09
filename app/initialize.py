@@ -23,8 +23,8 @@ log.create_log()
 USER_MAIL = 'kentarou.m@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'km19811216'  #ログイン時に入力するパスワード
 PROCESS_TIME = 60 * 60 * 1  # 処理時間
-STAR_LIST_INTERNAL_TIME = 0  # お気に入りの検索時間の間隔
-TH_COUNT = 1 # スレッド数
+STAR_LIST_INTERNAL_TIME = 0.2  # お気に入りの検索時間の間隔
+TH_COUNT = 4 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 ### 会員番号
 # 以下の手順で設定する
@@ -55,6 +55,7 @@ new_count = 0
 buy_count = 0
 start_time = time.time()
 buy_put_list = []
+cart_put_list = []
 cartNo = ''
 lock = Lock()
 lock_buy = Lock()
@@ -65,6 +66,7 @@ buy_processing = False
 buy_event = Event()
 star_event = Event()
 cart_check = False
+finish = False
 
 def login(id, password):
     while True:
@@ -140,20 +142,22 @@ def shop_select():
         'submitStoreCd': '10434'
     })
 
-def finish():
+def finish_buy():
     response = buy_session.post('https://www.bookoffonline.co.jp/order/COdOrderConfirmRcptStore.jsp', data={
         'BTN_CHECK': 'TempToReal',
         'deleteBookmarkAndAlertMail': '0'
     })
     return response.ok and response.url != 'https://www.bookoffonline.co.jp/disp/CCtViewCart_001.jsp?e=ORD_NO_STOCK_ERR'
 
-def buy(iscd):
-    global new_count
-    new_count += 1
-    global cart_check
-    cart_check = True
-    buy_session.post(MAIN_URL + '/disp/CSfAddSession_001.jsp', data={'iscd': iscd, 'st' : 1})
-    log.logger.info('カート追加完了[{}]'.format(iscd))
+def add_cart(iscd):
+    if not (iscd in cart_put_list):
+        global new_count
+        new_count += 1
+        global cart_check
+        cart_check = True
+        log.logger.info('カート追加')
+        buy_session.post(MAIN_URL + '/disp/CSfAddSession_001.jsp', data={'iscd': iscd, 'st' : 1})
+        log.logger.info('カート追加完了[{}]'.format(iscd))
 
 def next_process_count(index):
     global next_process_star
@@ -168,13 +172,11 @@ def run_thread(start_time, index):
     global buy_processing
     global star_session
     global buy_session
+    global finish
     while True:
         if buy_processing:
             star_event.wait()
             star_event.clear()
-            if cart_check:
-                check_cart()
-                continue
         if (not cart_refreshing):
             # 中古在庫を20件表示で検索
             if ((next_process_star == index) and (time.time() - wait_time) > STAR_LIST_INTERNAL_TIME):
@@ -198,14 +200,16 @@ def run_thread(start_time, index):
                     lock.release()
                     for iscd in isCdList:
                         buy_event.set()
-                        buy(iscd)
-                        star_event.wait()
-                        star_event.clear()
-                    buy_processing = False
+                        finish = False
+                        add_cart(iscd)
+                        buy()
+                    if finish:
+                        buy_processing = False
+                        finish = False
                     star_event.set()
                 if lock.locked():
                     lock.release()
-            elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 3):
+            elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 0.5):
                 wait_time = time.time()
                 next_process_count(index)
         if (time.time() - start_time) > PROCESS_TIME:
@@ -225,28 +229,34 @@ def check_cart(start_time):
         elif (time.time() - start_time) > PROCESS_TIME:
             return
 
+def buy():
+    lock_buy.acquire()
+    if not (new_count in buy_put_list):
+        buy_put_list.append(new_count)
+        lock_buy.release()
+        log.logger.info('購入開始')
+        cart_update()
+        if finish_buy():
+            log.logger.info('購入完了')
+            global buy_count
+            buy_count += 1
+        else:
+            log.logger.info('購入失敗')
+            cart_refresh()
+    if lock_buy.locked():
+        lock_buy.release()
+
 # 購入処理（カート更新 -> 確定）
-def main_buy(start_time, index):
+def main_buy(start_time):
+    global finish
+    global buy_processing
     while True:
         buy_event.wait()
         buy_event.clear()
         check_cart(start_time)
-        lock_buy.acquire()
-        if not (new_count in buy_put_list):
-            buy_put_list.append(new_count)
-            lock_buy.release()
-            log.logger.info('購入開始{}'.format(index))
-            cart_update()
-            if finish():
-                log.logger.info('購入完了')
-                global buy_count
-                buy_count += 1
-            else:
-                log.logger.info('購入失敗')
-                cart_refresh()
-            star_event.set()
-        if lock_buy.locked():
-            lock_buy.release()
+        buy()
+        finish = True
+        buy_processing = False
         if (time.time() - start_time) > PROCESS_TIME:
             return
 
@@ -283,7 +293,7 @@ def buy_init():
 driver.execute_script('window.open()')
 try:
     # ログイン
-    log.logger.info('ログイン処理')
+    log.logger.info('ログイン処理[{}]'.format(memNo))
     login(USER_MAIL, USER_PASS)
     # 注文完了画面を表示させるためにカートと店舗を設定
     log.logger.info('カートの設定処理開始')
@@ -297,7 +307,7 @@ try:
     th_pool_star = [Thread(target=run_thread, args=(start_time, index)) for index in range(TH_COUNT)]
 
     # 購入スレッドの定義
-    th_pool_buy = [Thread(target=main_buy, args=(start_time, index)) for index in range(1)]
+    th_buy = Thread(target=main_buy, args=(start_time,))
 
     # スレッド開始
     for th in th_pool_star:
@@ -305,17 +315,14 @@ try:
         time.sleep(1)
 
     # スレッド開始
-    for th in th_pool_buy:
-        th.start()
-        time.sleep(1)
+    th_buy.start()
 
     #スレッドの完了待ち
     for th in th_pool_star:
         th.join()
 
     #スレッドの完了待ち
-    for th in th_pool_buy:
-        th.join()
+    th_buy.join()
     log.logger.info('new: {}, buy: {}'.format(new_count, buy_count))
 except Exception as e:
     log.logger.exception(f'{e}')
