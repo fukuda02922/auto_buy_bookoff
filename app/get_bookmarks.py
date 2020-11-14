@@ -6,18 +6,16 @@ from threading import Thread, Lock
 TH_COUNT = 200 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 LIMIT = 1000000  # 取得回数
-START_MEMNO = 31440 # 開始位置
+START_MEMNO = 49011 # 開始位置
 PROCESS_TIME = 60 * 60 * 1
 count = 0
 start_time = time.time()
 lock = Lock()
 now = datetime.now()
 
-filename = os.path.dirname(__file__) + '/bookmark/sedori_list.csv'.format(now.year, now.month, now.day)
-pathlib.Path(filename)
+filename = os.path.dirname(__file__) + '/bookmark/sedori_list.csv'
 
-filename_over50 = os.path.dirname(__file__) + '/bookmark/over50_list.csv'.format(now.year, now.month, now.day)
-pathlib.Path(filename_over50)
+filename_over50 = os.path.dirname(__file__) + '/bookmark/over50_list.csv'
 
 def next_memNo():
     global count
