@@ -6,7 +6,7 @@ from threading import Thread, Lock
 TH_COUNT = 200 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 LIMIT = 1000000  # 取得回数
-START_MEMNO = 49011 # 開始位置
+START_MEMNO = 427458 # 開始位置
 PROCESS_TIME = 60 * 60 * 1
 count = 0
 start_time = time.time()
