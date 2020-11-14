@@ -3,20 +3,20 @@ from datetime import datetime
 import sys, os, traceback, requests, json, csv, time, pathlib
 from threading import Thread, Lock
 
-TH_COUNT = 100 # スレッド数
+TH_COUNT = 200 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 LIMIT = 1000000  # 取得回数
-START_MEMNO = 10451339 # 開始位置
+START_MEMNO = 31440 # 開始位置
 PROCESS_TIME = 60 * 60 * 1
 count = 0
 start_time = time.time()
 lock = Lock()
 now = datetime.now()
 
-filename = os.path.dirname(__file__) + '/bookmark/{}_{}_{}.csv'.format(now.year, now.month, now.day)
+filename = os.path.dirname(__file__) + '/bookmark/sedori_list.csv'.format(now.year, now.month, now.day)
 pathlib.Path(filename)
 
-filename_over50 = os.path.dirname(__file__) + '/bookmark/over{}_{}_{}.csv'.format(now.year, now.month, now.day)
+filename_over50 = os.path.dirname(__file__) + '/bookmark/over50_list.csv'.format(now.year, now.month, now.day)
 pathlib.Path(filename_over50)
 
 def next_memNo():

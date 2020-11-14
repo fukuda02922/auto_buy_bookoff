@@ -3,15 +3,16 @@ from datetime import datetime
 import sys, os, traceback, requests, json, csv, time, pathlib
 from threading import Thread, Lock
 
-TH_COUNT = 100 # スレッド数
+TH_COUNT = 10 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 lock = Lock()
 now = datetime.now()
-count = 0
+count = -1
+iscd_list = []
 
-filename = os.path.dirname(__file__) + '/bookmark/test.csv'
+filename = os.path.dirname(__file__) + '/bookmark/iscd_list.csv'
 
-filename_after = os.path.dirname(__file__) + '/bookmark/iscd_name.csv'
+filename_after = os.path.dirname(__file__) + '/bookmark/infos.csv'
 if os.path.exists(filename_after):
     os.remove(filename_after)
 pathlib.Path(filename_after)
@@ -21,27 +22,33 @@ def next_count():
     count += 1
     return count
 
-def run(r):
+def run():
     while True:
+        index = next_count()
+        if (index + 1) > len(iscd_list):
+            return
+        iscd = iscd_list[index]
         try:
-            response = requests.get(MAIN_URL + '/bolapi/api/goods/{}'.format(memNo))
-            info = json.loads(response.content)
+            response = requests.get(MAIN_URL + '/bolapi/api/goods/{}'.format(iscd))
+            info = response.content.lstrip('callback([').rstrip('])')
+            info_json = json.loads(info)
             lock.acquire()
             try:
                 with open(filename_after, 'a') as f:
                     w = csv.writer(f)
-                    w.writerow([info['instorecode'], 1])
+                    w.writerow([info_json['GOODS_NAME1'], info_json['GOODS_NAME3'], info_json['JAN'], info_json['SALE_PR_USED']])
             except Exception:
                 pass
             lock.release()
-
         except Exception:
             pass
 
-with open(filename) as f:
+with open(filename, 'r') as f:
     r = csv.reader(f)
-    th_pool = [Thread(target=run, args=(r,)) for index in range(TH_COUNT)]
-    for th in th_pool:
-        th.start()
-    for th in th_pool:
-        th.join()
+    for line in r:
+        iscd_list.append(line)
+th_pool = [Thread(target=run for index in range(TH_COUNT)]
+for th in th_pool:
+    th.start()
+for th in th_pool:
+    th.join()
