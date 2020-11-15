@@ -1,15 +1,13 @@
 from auto_buy_log import Log
 from datetime import datetime
-import sys, os, traceback, requests, json, csv, time, pathlib
+import sys, os, traceback, requests, json, csv, pathlib
 from threading import Thread, Lock
 
 TH_COUNT = 200 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 LIMIT = 1000000  # 取得回数
-START_MEMNO = 427458 # 開始位置
-PROCESS_TIME = 60 * 60 * 1
+START_MEMNO = 1588373 # 開始位置
 count = 0
-start_time = time.time()
 lock = Lock()
 now = datetime.now()
 
@@ -24,11 +22,11 @@ def next_memNo():
 
 def run():
     while True:
+        lock.acquire()
         memNo = next_memNo()
+        lock.release()
         print(memNo)
         if LIMIT < count:
-            return
-        if (time.time() - start_time) > PROCESS_TIME:
             return
         try:
             response = requests.get(MAIN_URL + '/spf-api2/goods_souko/bookmark/{}'.format(memNo))
