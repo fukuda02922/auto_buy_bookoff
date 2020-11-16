@@ -3,9 +3,11 @@ from datetime import datetime
 import sys, os, traceback, requests, json, csv, time, pathlib
 from threading import Thread, Lock
 
-TH_COUNT = 10 # スレッド数
+TH_COUNT = 100 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
+COUNT_NUM = 10 # 指定しているカウント以上の重複登録（お気に入り）を抜き出す
 lock = Lock()
+writer_lock = Lock()
 now = datetime.now()
 count = -1
 memNo_list = []
@@ -24,7 +26,9 @@ def next_count():
 
 def run():
     while True:
+        lock.acquire()
         index = next_count()
+        lock.release()
         if (index + 1) > len(memNo_list):
             return
         memNo = memNo_list[index]
@@ -32,7 +36,7 @@ def run():
             response = requests.get(MAIN_URL + '/spf-api2/goods_souko/bookmark/{}'.format(memNo))
             star_list_json = json.loads(response.content)
             if star_list_json['rcptList']:
-                lock.acquire()
+                writer_lock.acquire()
                 try:
                     with open(filename_after, 'a') as f:
                         w = csv.writer(f)
@@ -40,16 +44,30 @@ def run():
                             w.writerow([star['instorecode'], 1])
                 except Exception:
                     pass
-                lock.release()
+                writer_lock.release()
         except Exception:
             pass
 
 with open(filename, 'r') as f:
     r = csv.reader(f)
     for line in r:
-        memNo_list.append(line)
-th_pool = [Thread(target=run for index in range(TH_COUNT)]
+        memNo_list.append(line[0])
+th_pool = [Thread(target=run) for index in range(TH_COUNT)]
 for th in th_pool:
     th.start()
 for th in th_pool:
     th.join()
+
+iscd_list = {}
+with open(filename_after, 'r') as f:
+    r = csv.reader(f)
+    iscd_list = {}
+    for line in r:
+        if line[0] in iscd_list.keys():
+            iscd_list[line[0]] += 1
+        else:
+            iscd_list[line[0]] = 1
+sorted_iscd_list = sorted(iscd_list.items(), key=lambda x: x[1], reverse=True)
+with open(filename_after, 'w') as f2:
+    w = csv.writer(f2)
+    w.writerows([[item[0], item[1]] for item in sorted_iscd_list])
