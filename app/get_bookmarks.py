@@ -3,10 +3,10 @@ from datetime import datetime
 import sys, os, traceback, requests, json, csv, pathlib
 from threading import Thread, Lock
 
-TH_COUNT = 200 # スレッド数
+TH_COUNT = 50 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
-LIMIT = 1000000  # 取得回数
-START_MEMNO = 1588373 # 開始位置
+LIMIT = 710000  # 取得回数
+START_MEMNO = 7286872 # 開始位置
 count = 0
 lock = Lock()
 now = datetime.now()
