@@ -10,7 +10,7 @@ now = datetime.now()
 count = -1
 memNo_list = []
 
-filename = os.path.dirname(__file__) + '/bookmark/test.csv'
+filename = os.path.dirname(__file__) + '/bookmark/sedori_list.csv'
 
 filename_after = os.path.dirname(__file__) + '/bookmark/iscd_list.csv'
 if os.path.exists(filename_after):

@@ -525,3 +525,4 @@ https://www.bookoffonline.co.jp/bolapi/api/goods/0019528164 <- 商品cd(iscd)
 
 
 11709949
+12040945
