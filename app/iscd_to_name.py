@@ -10,6 +10,7 @@ writer_lock = Lock()
 now = datetime.now()
 count = -1
 iscd_list = []
+name_list = []
 
 filename = os.path.dirname(__file__) + '/bookmark/iscd_list.csv'
 
@@ -37,24 +38,18 @@ def run():
             response = requests.get(MAIN_URL + '/bolapi/api/goods/{}'.format(iscd))
             info = response.content.decode('utf_8_sig').lstrip('callback([').rstrip('])')
             info_json = json.loads(info)
-            writer_lock.acquire()
-            try:
-                with open(filename_after, 'a', encoding='utf_8_sig') as f:
-                    w = csv.writer(f)
-                    w.writerow(
-                        [
-                            duplicate_count,
-                            info_json['GOODS_NAME1'] if 'GOODS_NAME1' in info_json else '',
-                            info_json['GOODS_NAME2'] if 'GOODS_NAME2' in info_json else '',
-                            info_json['GOODS_NAME3'] if 'GOODS_NAME3' in info_json else '',
-                            info_json['JAN'] if 'JAN' in info_json else '',
-                            info_json['SALE_PR_USED'] if 'SALE_PR_USED' in info_json else '',
-                            MAIN_URL + '/old/{}'.format(info_json['INSTORECODE'])
-                        ]
-                    )
-            except Exception:
-                pass
-            writer_lock.release()
+            name_list.append(
+                [
+                    int(duplicate_count),
+                    info_json['SECTION'] if 'SECTION' in info_json else '',
+                    info_json['GOODS_NAME1'] if 'GOODS_NAME1' in info_json else '',
+                    info_json['GOODS_NAME2'] if 'GOODS_NAME2' in info_json else '',
+                    info_json['GOODS_NAME3'] if 'GOODS_NAME3' in info_json else '',
+                    info_json['JAN'] if 'JAN' in info_json else '',
+                    info_json['SALE_PR_USED'] if 'SALE_PR_USED' in info_json else '',
+                    MAIN_URL + '/old/{}'.format(info_json['INSTORECODE'])
+                ]
+            )
         except Exception:
             pass
 
@@ -62,11 +57,15 @@ with open(filename, 'r') as f:
     r = csv.reader(f)
     for line in r:
         iscd_list.append(line)
-with open(filename_after, 'a', encoding='utf_8_sig') as f:
-    w = csv.writer(f)
-    w.writerow(['COUNT', 'NAME', 'NAME2', 'NAME3', 'JAN', 'PRICE', 'URL'])
 th_pool = [Thread(target=run) for index in range(TH_COUNT)]
 for th in th_pool:
     th.start()
 for th in th_pool:
     th.join()
+
+sorted_count_list = sorted(name_list, key=lambda x: (x[1], x[0]), reverse=True)
+
+with open(filename_after, 'a', encoding='utf_8_sig') as f:
+    w = csv.writer(f, quotechar='"', quoting=csv.QUOTE_ALL)
+    w.writerow(['COUNT', 'SECTION', 'NAME', 'NAME2', 'NAME3', 'JAN', 'PRICE', 'URL'])
+    w.writerows(sorted_count_list)
