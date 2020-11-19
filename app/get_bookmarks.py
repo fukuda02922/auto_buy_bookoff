@@ -1,3 +1,7 @@
+###
+# せどりアカウントの会員番号を取得
+###
+
 from auto_buy_log import Log
 from datetime import datetime
 import sys, os, traceback, requests, json, csv, pathlib

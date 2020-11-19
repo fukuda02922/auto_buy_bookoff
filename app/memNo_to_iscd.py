@@ -1,3 +1,7 @@
+###
+# 会員番号リストからブックマークを取得して商品コードのリストを作成
+###
+
 from auto_buy_log import Log
 from datetime import datetime
 import sys, os, traceback, requests, json, csv, time, pathlib

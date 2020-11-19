@@ -1,5 +1,8 @@
 ###
-# 商品コードから商品情報リストのCSVに変換
+# 指定したアカウントのブックマークをCSVに変換
+# 使い方：
+# 1. memNoに会員番号を設定
+# 2. FILE_NAMEに出力先ファイル名を設定
 ###
 from auto_buy_log import Log
 from datetime import datetime
@@ -15,12 +18,13 @@ count = -1
 iscd_list = []
 name_list = []
 
-filename = os.path.dirname(__file__) + '/bookmark/iscd_list.csv'
+FILE_NAME = 'bookmark_1.csv'
+memNo = '8763947'
 
-filename_after = os.path.dirname(__file__) + '/bookmark/infos.csv'
-if os.path.exists(filename_after):
-    os.remove(filename_after)
-pathlib.Path(filename_after)
+filename = os.path.dirname(__file__) + '/bookmark/' + FILE_NAME
+if os.path.exists(filename):
+    os.remove(filename)
+pathlib.Path(filename)
 
 def next_count():
     global count
@@ -34,8 +38,7 @@ def run():
         lock.release()
         if (index + 1) > len(iscd_list):
             return
-        iscd = iscd_list[index][0]
-        duplicate_count = iscd_list[index][1]
+        iscd = iscd_list[index]
         try:
             print(index)
             response = requests.get(MAIN_URL + '/bolapi/api/goods/{}'.format(iscd))
@@ -43,7 +46,7 @@ def run():
             info_json = json.loads(info)
             name_list.append(
                 [
-                    int(duplicate_count),
+                    'now_bookmark',
                     info_json['SECTION'] if 'SECTION' in info_json else '',
                     info_json['GOODS_NAME1'] if 'GOODS_NAME1' in info_json else '',
                     info_json['GOODS_NAME2'] if 'GOODS_NAME2' in info_json else '',
@@ -57,19 +60,19 @@ def run():
         except Exception:
             pass
 
-with open(filename, 'r') as f:
-    r = csv.reader(f)
-    for line in r:
-        iscd_list.append(line)
+response = requests.get(MAIN_URL + '/spf-api2/goods_souko/bookmark/{}'.format(memNo))
+star_list_json = json.loads(response.content)
+for star in star_list_json['rcptList']:
+    iscd_list.append(star['instorecode'])
+
+
 th_pool = [Thread(target=run) for index in range(TH_COUNT)]
 for th in th_pool:
     th.start()
 for th in th_pool:
     th.join()
 
-sorted_count_list = sorted(name_list, key=lambda x: (x[1], x[0]), reverse=True)
-
-with open(filename_after, 'a', encoding='utf_8_sig') as f:
+with open(filename, 'a', encoding='utf_8_sig') as f:
     w = csv.writer(f, quotechar='"', quoting=csv.QUOTE_ALL)
     w.writerow(['人気度', 'カテゴリー', '商品名', '付加情報1', '付加情報2', 'JAN', '価格', 'URL', 'iscd(商品cd)'])
-    w.writerows(sorted_count_list)
+    w.writerows(name_list)
