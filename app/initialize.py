@@ -197,16 +197,16 @@ def run_thread(start_time, index):
                 lock.acquire()
                 if isCdList and (not buy_processing):
                     buy_processing = True
+                    finish = False
                     lock.release()
                     for iscd in isCdList:
                         buy_event.set()
-                        finish = False
                         add_cart(iscd)
                         buy()
                     if finish:
                         buy_processing = False
                         finish = False
-                    star_event.set()
+                        star_event.set()
                 if lock.locked():
                     lock.release()
             elif (time.time() - wait_time) > (STAR_LIST_INTERNAL_TIME + 0.5):
@@ -216,12 +216,10 @@ def run_thread(start_time, index):
             return
 
 def check_cart(start_time):
-    global cart_check
     while True:
         response = star_session.get(MAIN_URL + '/spf-api2/goods_souko/cart/{}/{}'.format(cartNo, memNo))
         carts = json.loads(response.content)
         if 'rcptList' in carts:
-            cart_check = False
             log.logger.info('カート追加確認')
             return
         elif not cart_check:
@@ -230,6 +228,11 @@ def check_cart(start_time):
             return
 
 def buy():
+    global cart_check
+    global finish
+    global buy_processing
+    cart_check = False
+    finish = False
     lock_buy.acquire()
     if not (new_count in buy_put_list):
         buy_put_list.append(new_count)
@@ -243,20 +246,19 @@ def buy():
         else:
             log.logger.info('購入失敗')
             cart_refresh()
+        finish = True
+        buy_processing = False
+        star_event.set()
     if lock_buy.locked():
         lock_buy.release()
 
 # 購入処理（カート更新 -> 確定）
 def main_buy(start_time):
-    global finish
-    global buy_processing
     while True:
         buy_event.wait()
         buy_event.clear()
         check_cart(start_time)
         buy()
-        finish = True
-        buy_processing = False
         if (time.time() - start_time) > PROCESS_TIME:
             return
 

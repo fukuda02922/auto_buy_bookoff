@@ -14,12 +14,12 @@
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 
-import chromedriver_binary, sys, os, traceback, requests, csv
+import chromedriver_binary, sys, os, traceback, requests, csv, time
 from requests import Session
 from threading import Thread, Lock
 
-USER_MAIL = '...@gmail.com' #ログイン時に入力するメールアドレス
-USER_PASS = '...'  #ログイン時に入力するパスワード
+USER_MAIL = 'fukuda@liveworks.co.jp' #ログイン時に入力するメールアドレス
+USER_PASS = 'yuuki02922'  #ログイン時に入力するパスワード
 TH_COUNT = 100 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
 FILE_NAME = 'bookmark_1.csv'
@@ -28,6 +28,10 @@ session = requests.Session()
 
 options = webdriver.chrome.options.Options()
 options.add_argument('--headless')
+options.add_argument('--disable-application-cache')
+options.add_argument('--ignore-certificate-errors')
+options.add_argument('--start-maximized')
+options.add_argument("--log-level=3")
 driver = webdriver.Chrome(options=options)
 
 filename = os.path.dirname(__file__) + '/bookmark/' + FILE_NAME
@@ -60,11 +64,11 @@ def set_cookie(session: Session):
     for cookie in driver.get_cookies():
         session.cookies.set(cookie["name"], cookie["value"])
 
-
 def next_count():
     global count
+    index = count
     count += 1
-    return count
+    return index
 
 def run_thread():
     while True:
@@ -77,14 +81,14 @@ def run_thread():
             print(index)
             session.get(MAIN_URL + '/member/BPmAddBookMark.jsp?iscd={}&st=1'.format(iscd_list[index]))  # エラー
         except Exception as e:
-            log.logger.exception(f'{e}')
+            traceback.print_exc()
             continue
 
 try:
     # ログイン
     login(USER_MAIL, USER_PASS)
 
-    with open(filename, 'r') as f:
+    with open(filename, 'r', encoding='utf_8_sig') as f:
         r = csv.reader(f)
         for line in r:
             iscd_list.append(line[8].replace('"', '').replace('=', ''))
@@ -95,11 +99,10 @@ try:
     # スレッド開始
     for th in th_pool:
         th.start()
-        time.sleep(1)
+        time.sleep(0.01)
 
     #スレッドの完了待ち
-    for th in th_pool_star:
+    for th in th_pool:
         th.join()
-    # os.remove(filename_after)
 except Exception as e:
-    pass
+    traceback.print_exc()

@@ -14,18 +14,22 @@ import chromedriver_binary, sys, os, traceback, requests, json
 from requests import Session
 from threading import Thread, Lock
 
-USER_MAIL = '...@gmail.com' #ログイン時に入力するメールアドレス
-USER_PASS = '...'  #ログイン時に入力するパスワード
+USER_MAIL = 'yukiyuhkin0818@gmail.com' #ログイン時に入力するメールアドレス
+USER_PASS = 'yuhki1212'  #ログイン時に入力するパスワード
 MAIN_URL = 'https://www.bookoffonline.co.jp'
-memNo = '...' #会員番号
+memNo = '11730214' #会員番号
 
 session = requests.Session()
 
 options = webdriver.chrome.options.Options()
 options.add_argument('--headless')
+options.add_argument('--disable-application-cache')
+options.add_argument('--ignore-certificate-errors')
+options.add_argument('--start-maximized')
+options.add_argument("--log-level=3")
 driver = webdriver.Chrome(options=options)
 
-iscds = ''
+iscds_list = []
 
 def login(id, password):
     while True:
@@ -52,8 +56,16 @@ try:
 
     response = requests.get(MAIN_URL + '/spf-api2/goods_souko/bookmark/{}'.format(memNo))
     star_list_json = json.loads(response.content)
+    index = 0
+    iscds = ''
     for star in star_list_json['rcptList']:
         iscds += '&iscd={}&st=1'.format(star['instorecode'])
-    session.get(MAIN_URL + '/disp/BSfDelCheckedItemsFromMyBookoff.jsp?del_type=bookmark' + iscds)
+        index += 1
+        if index % 100 == 0:
+            iscds_list.append(iscds)
+            iscds = ''
+    iscds_list.append(iscds)
+    for item in iscds_list:
+        session.get(MAIN_URL + '/disp/BSfDelCheckedItemsFromMyBookoff.jsp?del_type=bookmark' + item)
 except Exception as e:
-    pass
+    traceback.print_exc()
