@@ -18,16 +18,16 @@ import chromedriver_binary, sys, os, traceback, requests, csv, time
 from requests import Session
 from threading import Thread, Lock
 
-USER_MAIL = 'fukuda@liveworks.co.jp' #ログイン時に入力するメールアドレス
+USER_MAIL = 'yuki.mirai029@gmail.com' #ログイン時に入力するメールアドレス
 USER_PASS = 'yuuki02922'  #ログイン時に入力するパスワード
 TH_COUNT = 100 # スレッド数
 MAIN_URL = 'https://www.bookoffonline.co.jp'
-FILE_NAME = 'bookmark_1.csv'
+FILE_NAME = 'bokmark_yuki_mirai.csv'
 
 session = requests.Session()
 
 options = webdriver.chrome.options.Options()
-options.add_argument('--headless')
+# options.add_argument('--headless')
 options.add_argument('--disable-application-cache')
 options.add_argument('--ignore-certificate-errors')
 options.add_argument('--start-maximized')
