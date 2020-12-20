@@ -26,6 +26,7 @@ MAIN_URL = 'https://www.bookoffonline.co.jp'
 # 4. 左上にあるテキストボックス(filter)に「api」と入力する
 # 5. リロードする
 # 6. Nameエリアに数字だけ表示されている通信があるので、それを設定する(urlはhttps://www.bookoffonline.co.jp/spf-api2/goods_souko/bookmark/.....)
+# 7. 監視対象のお気に入りの会員番号は複数設定OK
 memNo = ['12107717', '12330370']
 
 TH_COUNT =  len(memNo) * 2 # スレッド数
