@@ -54,24 +54,30 @@ def login(id, password):
         buy_session.cookies.set(cookie[0], cookie[1])
 
 def cart_refresh():
+    global new_count
     cart_refreshing = True
-    while True:
-        try:
-            response = buy_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
-                'CART1_001': cartNo,
-                'CART1_002': new_count,
-                'CART1_GOODS_NM': '(unable to decode value)',
-                'CART1_STOCK_TP': '1',
-                'CART1_SALE_PR': '364',
-                'CART1_CART_PR': '364',
-                'CART1_005': '1',
-                'LENGTH': '1',
-                'OPCODE': 'clear',
-            })
-            if response.ok:
-                break
-        except Exception as e:
-            log.logger.exception(f'{e}')
+    response = buy_session.get('https://www.bookoffonline.co.jp/spf-api2/goods_souko/cart/{}/{}'.format(cartNo, memNo), timeout=3.0)
+    cart = json.loads(response.content)
+    if 'rcptList' in cart:
+        while True:
+            try:
+                response = buy_session.post('https://www.bookoffonline.co.jp/disp/CCtUpdateCart_001.jsp', data={
+                    'CART1_001': cartNo,
+                    'CART1_002': new_count,
+                    'CART1_GOODS_NM': '(unable to decode value)',
+                    'CART1_STOCK_TP': '1',
+                    'CART1_SALE_PR': '364',
+                    'CART1_CART_PR': '364',
+                    'CART1_005': '1',
+                    'LENGTH': '1',
+                    'OPCODE': 'clear',
+                })
+                if response.ok:
+                    break
+            except Exception as e:
+                log.logger.exception(f'{e}')
+    else:
+        new_count -= 1
     cart_refreshing = False
 
 def cart_update():
